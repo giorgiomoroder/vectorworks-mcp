@@ -12,6 +12,7 @@ from mcp.types import ToolAnnotations
 
 from vwmcp import calls
 from vwmcp.client import Bridge, BridgeError
+from vwmcp.journal import Journal
 
 EXPECTED_BRIDGE_VERSION = "0.1.0"
 
@@ -22,8 +23,8 @@ INSTRUCTIONS = """\
 Tools for a live Vectorworks session (Spotlight-focused). Every call runs
 inside the user's open document via the "MCP Run Job" menu command.
 
-- Each tool call is exactly one Vectorworks undo step. Batch related edits
-  into one call (e.g. one vw_exec_python) so a bad run is one Cmd-Z.
+- Vectorworks merges back-to-back MCP edits into one Cmd-Z step, so to undo
+  exactly one tool call use vw_revert_last (works for typed write tools).
 - Objects are identified by UUID (stable across calls); never cache handles.
 - Vectorworks embeds Python 3.9: code sent to vw_exec_python must be 3.9-
   compatible. Use vw_vs_lookup to find vs.* functions and signatures.
@@ -36,6 +37,11 @@ mcp = MCPServer("vectorworks", instructions=INSTRUCTIONS)
 @functools.cache
 def get_bridge() -> Bridge:
     return Bridge()
+
+
+@functools.cache
+def get_journal() -> Journal:
+    return Journal(get_bridge().root / "journal.jsonl")
 
 
 def vw(fn: str, **kwargs):

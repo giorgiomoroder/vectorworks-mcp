@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -51,6 +52,8 @@ class MacTrigger:
         min_uptime: float = MIN_UPTIME,
         uptime: Callable[[], float | None] | None = None,
         spawn: Callable[[list[str]], subprocess.Popen] | None = None,
+        busy_grace: float = 10.0,
+        poll_interval: float = 0.05,
     ):
         self.root = Path(root)
         self.app = app
@@ -61,7 +64,21 @@ class MacTrigger:
                 args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
         )
+        self.busy_grace = busy_grace
+        self.poll_interval = poll_interval
         self._pending: subprocess.Popen | None = None
+
+    def _previous_still_running(self) -> bool:
+        # osascript can return a moment after the result file lands (e.g. while
+        # Vectorworks redraws), so allow a grace period before calling it stuck.
+        if self._pending is None:
+            return False
+        deadline = time.monotonic() + self.busy_grace
+        while self._pending.poll() is None:
+            if time.monotonic() >= deadline:
+                return True
+            time.sleep(self.poll_interval)
+        return False
 
     def __call__(self) -> None:
         up = self.uptime()
@@ -71,7 +88,7 @@ class MacTrigger:
             raise TriggerError(
                 f"{self.app} is still starting ({up:.0f}s). Try again in a few seconds."
             )
-        if self._pending is not None and self._pending.poll() is None:
+        if self._previous_still_running():
             raise TriggerError(
                 f"{self.app} has not answered the previous request; a dialog is "
                 "probably open. Close it in Vectorworks and retry."

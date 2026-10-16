@@ -19,7 +19,9 @@ def make(root, uptime, procs=None):
         procs.append(args)
         return FakeProc(done=False)
 
-    return MacTrigger(root, app="Vectorworks 2026", uptime=lambda: uptime, spawn=spawn), procs
+    t = MacTrigger(root, app="Vectorworks 2026", uptime=lambda: uptime, spawn=spawn,
+                   busy_grace=0.05, poll_interval=0.001)
+    return t, procs
 
 
 def test_refuses_when_vectorworks_not_running(root):
@@ -61,3 +63,23 @@ def test_will_not_stack_events_while_previous_is_stuck(root):
 )
 def test_parse_etime(text, secs):
     assert parse_etime(text) == secs
+
+
+class SlowProc:
+    """Finishes after a few polls, like osascript returning just after the result lands."""
+
+    def __init__(self, polls_until_done=3):
+        self.left = polls_until_done
+
+    def poll(self):
+        self.left -= 1
+        return 0 if self.left <= 0 else None
+
+
+def test_waits_briefly_for_previous_event_to_finish(root):
+    procs = []
+    t = MacTrigger(root, uptime=lambda: 600, spawn=lambda a: procs.append(a) or SlowProc(),
+                   busy_grace=1.0, poll_interval=0.001)
+    t()
+    t()  # previous proc finishes within the grace period
+    assert len(procs) == 2

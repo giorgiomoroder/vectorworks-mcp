@@ -189,11 +189,40 @@ def set_record(uuid, record, values):
     unknown = [k for k in values if k not in known]
     if unknown:
         raise KeyError("unknown field(s) %r on record %r" % (unknown, record))
+    before = dict((k, _str(vs.GetRField(h, record, k))) for k in values)
+    _write_fields(h, record, values)
+    return {"document": current_document(), "before": before}
+
+
+def _write_fields(h, record, values):
+    if record == LD:
+        values = _address_fields(h, values)
     for k, v in values.items():
         vs.SetRField(h, record, k, _str(v))
     if vs.GetTypeN(h) == 86:
         vs.ResetObject(h)
-    return get_record(uuid, record)
+
+
+def current_document():
+    return _str(vs.GetFName())
+
+
+def revert(ops):
+    """Undo journaled tool calls: restore field values, delete created objects."""
+    restored, deleted, missing = 0, 0, []
+    for op in ops:
+        h = vs.GetObjectByUuid(op["uuid"])
+        if _is_nil(h):
+            missing.append(op["uuid"])
+            continue
+        if op["op"] == "fields":
+            _write_fields(h, op["record"], op["before"])
+            restored += 1
+        elif op["op"] == "created":
+            vs.DelObject(h)
+            deleted += 1
+    return {"document": current_document(), "restored": restored, "deleted": deleted,
+            "missing": missing}
 
 
 # ---- symbols ------------------------------------------------------------------
@@ -231,4 +260,161 @@ def insert_symbol(name, x, y, z=None, layer=None, cls=None, rotation=0.0):
         vs.SetClass(h, cls)
     if z is not None:
         vs.Move3DObj(h, 0, 0, z - vs.GetSymLoc3D(h)[2])
-    return obj_info(h)
+    info = obj_info(h)
+    info["document"] = current_document()
+    return info
+
+
+# ---- Spotlight ------------------------------------------------------------------
+
+LD = "Lighting Device"
+LD_FIELDS = [
+    "Unit Number", "Channel", "Dimmer", "Universe", "DMX Address", "UniverseAddress",
+    "Absolute Address", "Num Channels", "Purpose", "Position", "Inst Type", "Wattage",
+    "Color", "Template", "Template2", "Focus", "Circuit Number", "Circuit Name",
+    "Mark", "Symbol Name", "Fixture Mode", "GDTF Fixture Name", "Device Type",
+    "User Field 1", "User Field 2", "User Field 3", "User Field 4", "User Field 5",
+    "User Field 6",
+]
+# Plug-in name -> parameter holding the position's name.
+POSITION_PLUGINS = {
+    "Light Position Obj": "Position Name",
+    "Lighting Pipe": "Name",
+    "Lighting Pipe Ladder": "Name",
+    "Hanging Position": "Position Name",
+    "Truss": "Name",
+}
+
+
+def _natural(s):
+    import re
+    return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", s or "")]
+
+
+def lighting_devices():
+    return all_objects("(PON='%s')" % LD)
+
+
+def ld_row(h, fields):
+    row = {"uuid": h_uuid(h), "layer": _str(vs.GetLName(vs.GetLayer(h))),
+           "class": _str(vs.GetClass(h))}
+    for f in fields:
+        row[f] = _str(vs.GetRField(h, LD, f))
+    return row
+
+
+def ld_field_names():
+    devs = lighting_devices()
+    if not devs:
+        return []
+    rec = vs.GetParametricRecord(devs[0])
+    return [_str(vs.GetFldName(rec, i)) for i in range(1, vs.NumFields(rec) + 1)]
+
+
+def list_lighting_devices(fields=None, position=None, layer=None, limit=5000):
+    fields = fields or LD_FIELDS
+    keyed = []
+    for h in lighting_devices():
+        pos = _str(vs.GetRField(h, LD, "Position"))
+        if position is not None and pos != position:
+            continue
+        if layer is not None and _str(vs.GetLName(vs.GetLayer(h))) != layer:
+            continue
+        unit = _str(vs.GetRField(h, LD, "Unit Number"))
+        keyed.append(((_natural(pos), _natural(unit)), ld_row(h, fields)))
+    keyed.sort(key=lambda kr: kr[0])
+    return [row for _, row in keyed[:limit]]
+
+
+def _resolve_devices(selectors):
+    """Map each selector to exactly one device handle, or raise before any edit."""
+    by_uuid, by_pos_unit, by_unit, by_chan = {}, {}, {}, {}
+    for h in lighting_devices():
+        u = h_uuid(h)
+        pos = _str(vs.GetRField(h, LD, "Position"))
+        unit = _str(vs.GetRField(h, LD, "Unit Number"))
+        by_uuid[u] = h
+        by_pos_unit.setdefault((pos, unit), []).append(h)
+        by_unit.setdefault(unit, []).append(h)
+        by_chan.setdefault(_str(vs.GetRField(h, LD, "Channel")), []).append(h)
+    out, errors = [], []
+    for i, sel in enumerate(selectors):
+        if sel.get("uuid"):
+            hs = [by_uuid[sel["uuid"]]] if sel["uuid"] in by_uuid else []
+            label = "uuid %s" % sel["uuid"]
+        elif sel.get("unit_number") is not None and sel.get("position") is not None:
+            hs = by_pos_unit.get((sel["position"], str(sel["unit_number"])), [])
+            label = "%s unit %s" % (sel["position"], sel["unit_number"])
+        elif sel.get("unit_number") is not None:
+            hs = by_unit.get(str(sel["unit_number"]), [])
+            label = "unit %s (add position: unit numbers repeat per position)" % sel["unit_number"]
+        elif sel.get("channel") is not None:
+            hs = by_chan.get(str(sel["channel"]), [])
+            label = "channel %s" % sel["channel"]
+        else:
+            errors.append("update %d: needs uuid, unit_number(+position) or channel" % i)
+            continue
+        if len(hs) != 1:
+            errors.append("update %d: %s matches %d devices" % (i, label, len(hs)))
+        else:
+            out.append(hs[0])
+    if errors:
+        raise LookupError("; ".join(errors))
+    return out
+
+
+def _address_fields(h, fields):
+    """Spotlight rebuilds Universe/DMX Address from UniverseAddress on reset, so
+    route split-address edits through UniverseAddress."""
+    fields = dict(fields)
+    if ("Universe" in fields or "DMX Address" in fields) and "UniverseAddress" not in fields:
+        uni = _str(fields.pop("Universe", vs.GetRField(h, LD, "Universe")))
+        addr = _str(fields.pop("DMX Address", vs.GetRField(h, LD, "DMX Address")))
+        fields["UniverseAddress"] = "%s/%s" % (uni, addr)
+    return fields
+
+
+def set_lighting_device_fields(updates):
+    """updates: [{selector keys..., "fields": {name: value}}]. All-or-nothing:
+    every selector and field name is validated before anything changes.
+    Values are re-read by the server afterwards (resets apply at script end)."""
+    handles = _resolve_devices(updates)
+    known = set(ld_field_names())
+    bad = sorted(set(k for u in updates for k in u["fields"]) - known)
+    if bad:
+        raise KeyError("unknown Lighting Device field(s): %r" % bad)
+    done = []
+    for h, u in zip(handles, updates):
+        before = dict((k, _str(vs.GetRField(h, LD, k))) for k in u["fields"])
+        _write_fields(h, LD, u["fields"])
+        done.append({"uuid": h_uuid(h), "before": before})
+    return {"document": current_document(), "devices": done}
+
+
+def read_devices(uuids, fields):
+    return [ld_row(handle(u), fields) for u in uuids]
+
+
+def list_positions(include_devices=True):
+    devices = {}
+    for h in lighting_devices():
+        devices.setdefault(_str(vs.GetRField(h, LD, "Position")), []).append(
+            ld_row(h, ["Unit Number", "Channel", "Inst Type", "Purpose"]))
+    positions, named = [], set()
+    for h in all_objects("(T=86)"):
+        plug = pio_name(h)
+        if plug not in POSITION_PLUGINS:
+            continue
+        nm = _str(vs.GetRField(h, plug, POSITION_PLUGINS[plug]))
+        named.add(nm)
+        devs = sorted(devices.get(nm, []), key=lambda r: _natural(r["Unit Number"]))
+        p = {"name": nm, "uuid": h_uuid(h), "kind": plug,
+             "layer": _str(vs.GetLName(vs.GetLayer(h))), "device_count": len(devs) if nm else 0}
+        if include_devices and nm:
+            p["devices"] = devs
+        positions.append(p)
+    positions.sort(key=lambda p: _natural(p["name"]))
+    orphans = dict((k, len(v)) for k, v in devices.items() if k and k not in named)
+    return {"positions": positions,
+            "unassigned_device_count": len(devices.get("", [])),
+            "device_positions_without_object": orphans}

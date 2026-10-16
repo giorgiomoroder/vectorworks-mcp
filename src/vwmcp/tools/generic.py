@@ -9,6 +9,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from vwmcp import app
 from vwmcp.app import READ, WRITE, mcp, vw
 from vwmcp.client import BridgeError
+from vwmcp.journal import JournalError
 
 PING_CODE = """
 v = vs.GetVersionEx()
@@ -62,16 +63,20 @@ def vw_ping() -> dict:
 
 
 @mcp.tool(annotations=WRITE)
-def vw_exec_python(code: str) -> dict:
+def vw_exec_python(code: str, modifies_document: bool = True) -> dict:
     """Run arbitrary Python inside Vectorworks with `vs` in scope.
 
     Returns stdout, the value of the last expression (or of a variable named
     `result`), and the traceback if it raised. Vectorworks embeds Python 3.9.
-    The whole call is one undo step, so put multi-step edits in one call.
     Handles are only valid during the call; return UUIDs
-    (vs.GetObjectUuid) to refer to objects later.
+    (vs.GetObjectUuid) to refer to objects later. A wrong vs.* signature can
+    pop a modal "Script Errors" dialog in Vectorworks instead of raising;
+    check with vw_vs_lookup first. Set modifies_document=False for read-only
+    code; otherwise vw_revert_last can't step past this call.
     """
     res = _run_raw(code)
+    if modifies_document:
+        app.get_journal().record(vw("current_document"), "vw_exec_python", None)
     return {k: res.get(k) for k in ("ok", "value", "stdout", "error", "traceback")}
 
 
@@ -144,7 +149,12 @@ def vw_set_record(uuid: str, record: str, values: dict[str, Any]) -> dict[str, A
     """Set record fields (or plug-in parameters) on one object; unknown field
     names are rejected before anything changes. One undo step. Returns the
     record afterwards."""
-    return vw("set_record", uuid=uuid, record=record, values=values)
+    out = vw("set_record", uuid=uuid, record=record, values=values)
+    app.get_journal().record(
+        out["document"], "vw_set_record",
+        [{"op": "fields", "uuid": uuid, "record": record, "before": out["before"]}],
+    )
+    return vw("get_record", uuid=uuid, record=record)
 
 
 @mcp.tool(annotations=READ)
@@ -168,7 +178,32 @@ def vw_insert_symbol(
 ) -> dict:
     """Place a symbol from the document's resources at x, y (document units),
     optionally at height z, on a layer and in a class. One undo step."""
-    return vw(
+    info = vw(
         "insert_symbol", name=name, x=x, y=y, z=z, layer=layer, cls=class_name,
         rotation=rotation,
     )
+    app.get_journal().record(
+        info.pop("document"), "vw_insert_symbol", [{"op": "created", "uuid": info["uuid"]}]
+    )
+    return info
+
+
+@mcp.tool(annotations=WRITE)
+def vw_revert_last() -> dict:
+    """Undo exactly the last MCP write in the active document: restores the
+    previous field values of vw_set_record / vw_set_lighting_device_fields,
+    or deletes the symbol vw_insert_symbol placed. Call repeatedly to step
+    further back. (Vectorworks' own Cmd-Z merges consecutive MCP edits.)
+    Raw vw_exec_python edits can't be reverted this way."""
+    journal = app.get_journal()
+    document = vw("current_document")
+    try:
+        entry = journal.pop(document)
+    except JournalError as e:
+        raise ToolError(str(e)) from e
+    try:
+        result = vw("revert", ops=entry["ops"])
+    except ToolError:
+        journal.record(entry["document"], entry["tool"], entry["ops"])  # put it back
+        raise
+    return {"reverted_tool": entry["tool"], **result}
