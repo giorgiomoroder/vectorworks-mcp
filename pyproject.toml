@@ -10,6 +10,10 @@ dependencies = ["mcp>=2.3,<3"]
 [project.scripts]
 vwmcp = "vwmcp.server:main"
 
+[project.urls]
+Homepage = "https://github.com/giorgiomoroder/vectorworks-mcp"
+Issues = "https://github.com/giorgiomoroder/vectorworks-mcp/issues"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
