@@ -70,3 +70,16 @@ def test_packaged_bridge_matches_repo_copy():
     repo = Path(__file__).resolve().parents[1] / "vw-plugin" / "vwmcp" / "vwmcp_bridge.py"
     assert app.bundled_bridge_source() == repo.read_text()
     assert f'BRIDGE_VERSION = "{app.EXPECTED_BRIDGE_VERSION}"' in repo.read_text()
+
+
+def test_ping_warns_on_untested_vectorworks_version(vs):
+    vs.GetVersionEx = lambda: (30, 4, 0, 1, 800000)  # Vectorworks 2025
+    out = server.vw_ping()
+    assert "2026" in out["warning"] and "30.4.0" in out["warning"]
+
+
+def test_ping_combines_warnings(vs, monkeypatch):
+    vs.GetVersionEx = lambda: (30, 4, 0, 1, 800000)
+    monkeypatch.setattr(app, "EXPECTED_BRIDGE_VERSION", "9.9.9")
+    out = server.vw_ping()
+    assert "9.9.9" in out["warning"] and "2026" in out["warning"]

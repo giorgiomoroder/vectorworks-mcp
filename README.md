@@ -2,6 +2,12 @@
 
 <!-- mcp-name: io.github.giorgiomoroder/vectorworks-mcp -->
 
+> **Beta.** Tested on Vectorworks 2026 (Update 3, English) with Spotlight on
+> macOS only. Other versions, languages and Windows may not work yet. Save
+> your file before asking for edits, and please
+> [report what you find](https://github.com/giorgiomoroder/vectorworks-mcp/issues/new/choose).
+> Working under an NDA? Read [Your drawing data](#your-drawing-data-and-ndas) first.
+
 Let Claude work inside your open Vectorworks drawing. Spotlight first:
 read and bulk-edit Lighting Devices, check positions, pull paperwork, and
 run any Vectorworks Python when you need more.
@@ -94,6 +100,35 @@ of your open drawing.
 | `vw_exec_python` | Run any Vectorworks Python (`vs.*`) and get stdout, value, traceback |
 | `vw_vs_lookup` | Search the `vs.*` API of *your* Vectorworks, with signatures |
 
+## Your drawing data and NDAs
+
+**What leaves your Mac:** whatever Claude reads from your drawing, plus
+whatever you type, is sent to Anthropic as part of your Claude conversation.
+That includes fixture lists, channel and address data, position and layer
+names, venue and show names, and anything else the tools return. The
+`.vwx` file itself is never uploaded, but Claude can read most of what's in
+it if you ask.
+
+**What stays local:** the bridge runs entirely on your Mac. Requests and
+results pass through `~/.vwmcp/`, and nothing in this project sends data
+anywhere except through your Claude app.
+
+**If a project is under NDA or a client confidentiality clause:**
+
+- Check whether your agreement allows project data to be processed by a
+  third-party AI service. Many NDAs don't address it, and some forbid it.
+  When in doubt, ask the client or producer first.
+- Your Claude plan and privacy settings govern how Anthropic stores
+  conversations and whether they may be used for model training. Review them
+  at [claude.ai/settings](https://claude.ai/settings) and in
+  [Anthropic's privacy policy](https://www.anthropic.com/legal/privacy).
+  Team and Enterprise plans have different terms from personal plans.
+- Limit what Claude sees: ask about one position or layer rather than the
+  whole drawing, and prefer report tools that return only the columns you
+  need.
+- Don't use it on a confidential drawing if you can't share that drawing's
+  contents with Anthropic.
+
 ## Good to know
 
 - **Undo.** Vectorworks lumps back-to-back Claude edits into a single
@@ -112,10 +147,12 @@ of your open drawing.
   waits and then times out with a message saying so. Close the dialog and ask again.
 - **Just launched?** Claude waits until Vectorworks has been open ~30 seconds.
   Scripts sent while Vectorworks is still starting can crash it.
-- **Your data stays local.** Requests pass through `~/.vwmcp/` on your Mac.
-  The log is `~/.vwmcp/vwmcp.log`.
+- **Log file.** Bridge errors and timeouts are logged to `~/.vwmcp/vwmcp.log`.
 
 ## Troubleshooting
+
+When reporting a problem, please use the
+[bug report form](https://github.com/giorgiomoroder/vectorworks-mcp/issues/new/choose).
 
 | Symptom | Fix |
 |---|---|
@@ -124,6 +161,7 @@ of your open drawing.
 | A "Script Errors" window in Vectorworks | Usually raw Python calling a `vs` function with the wrong arguments. Click OK; ask Claude to check the signature with `vw_vs_lookup`. |
 | `vw_ping` warns about bridge version | Re-run the installer (or `uvx --from git+https://github.com/giorgiomoroder/vectorworks-mcp vwmcp install-plugin`). |
 | Nothing happens, no macOS permission prompt | System Settings ▸ Privacy & Security ▸ Automation: allow Claude (or Terminal) to control Vectorworks 2026. |
+| `vw_ping` warns the Vectorworks version is untested | It may work; save first, check results, and please open an issue either way. |
 | Different Vectorworks version | `VW_VERSION=2025` before the installer command, and set `VWMCP_APP="Vectorworks 2025"` in the server's environment. Only 2026 is tested. |
 
 ## Manual configuration

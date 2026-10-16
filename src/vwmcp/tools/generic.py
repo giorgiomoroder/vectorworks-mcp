@@ -54,11 +54,21 @@ def vw_ping() -> dict:
         "document": res["value"]["document"],
         "bridge_version": res.get("bridge_version"),
     }
+    warnings = []
     if out["bridge_version"] != app.EXPECTED_BRIDGE_VERSION:
-        out["warning"] = (
+        warnings.append(
             f"Installed bridge is {out['bridge_version']}, server expects "
             f"{app.EXPECTED_BRIDGE_VERSION}. Run `vwmcp install-plugin` and retry."
         )
+    major = int(out["vectorworks_version"].split(".")[0])
+    if major not in app.TESTED_VW_MAJORS:
+        tested = ", ".join(f"Vectorworks {y}" for y in app.TESTED_VW_MAJORS.values())
+        warnings.append(
+            f"Vectorworks {out['vectorworks_version']} is untested (tested: {tested}). "
+            "Field names and behavior may differ; verify results and save first."
+        )
+    if warnings:
+        out["warning"] = " ".join(warnings)
     return out
 
 

@@ -1,0 +1,32 @@
+name: It works on my setup
+description: Report a Vectorworks version / language / OS where it works, to help other users
+labels: [compatibility]
+body:
+  - type: markdown
+    attributes:
+      value: Short and sweet helps. Issues are public; no confidential project details please.
+  - type: input
+    id: vw_version
+    attributes:
+      label: Vectorworks version and product
+      placeholder: 2025 SP4, Spotlight
+    validations:
+      required: true
+  - type: input
+    id: language
+    attributes:
+      label: Vectorworks language
+      placeholder: German
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you tried
+      description: Which tools or tasks worked (and any that didn't)

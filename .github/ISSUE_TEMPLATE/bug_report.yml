@@ -1,0 +1,64 @@
+name: Bug report
+description: Something didn't work, crashed Vectorworks, or gave wrong results
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing! Issues here are **public**: remove show names,
+        venues, client names or anything else covered by an NDA from what you
+        paste below.
+  - type: input
+    id: vw_version
+    attributes:
+      label: Vectorworks version
+      description: Help > About Vectorworks (e.g. "2026 Update 3, build 846827"), or the output of `vw_ping`
+    validations:
+      required: true
+  - type: dropdown
+    id: product
+    attributes:
+      label: Vectorworks product
+      options: [Spotlight, Design Suite, Architect, Landmark, Fundamentals, Other]
+    validations:
+      required: true
+  - type: input
+    id: language
+    attributes:
+      label: Vectorworks language
+      placeholder: English
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: macOS 26.0 (Apple Silicon)
+    validations:
+      required: true
+  - type: dropdown
+    id: client
+    attributes:
+      label: Claude app
+      options: [Claude Desktop, Claude Code, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: asked
+    attributes:
+      label: What you asked Claude to do
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+      description: Include any error text from Claude or from a Vectorworks "Script Errors" window. Did Vectorworks crash?
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: Last ~20 lines of `~/.vwmcp/vwmcp.log` (run `tail -20 ~/.vwmcp/vwmcp.log` in Terminal). Redact anything confidential.
+      render: text
