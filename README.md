@@ -184,7 +184,7 @@ Vectorworks ◀─────────────────────�
 The in-app bridge is a ~120-line "dumb executor" and rarely changes. All
 logic, including the helper library run inside Vectorworks, is sent from the
 server with each request. Details and the reasons for this design are in
-[docs/architecture.md](docs/architecture.md).
+[docs/architecture.md](docs/architecture.md); `vs.*` findings are in [docs/vs-notes.md](docs/vs-notes.md).
 
 ## Windows
 

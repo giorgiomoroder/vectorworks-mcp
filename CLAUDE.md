@@ -1,0 +1,110 @@
+# vectorworks-mcp: guide for Claude Code sessions
+
+Mac-native MCP server for Vectorworks, Spotlight-first, pure Python.
+Public repo: https://github.com/giorgiomoroder/vectorworks-mcp (MIT).
+Status: **v0.1.0 beta**, tested only on Vectorworks 2026 Update 3 (English,
+Spotlight) on macOS. Read `docs/architecture.md` and `docs/vs-notes.md`
+before changing anything that touches Vectorworks.
+
+## Layout
+
+- `vw-plugin/vwmcp/vwmcp_bridge.py`: in-app executor (~120 lines). Installed to
+  `~/Library/Application Support/Vectorworks/2026/Plug-ins/vwmcp/`. Run by the
+  user-created **MCP Run Job** menu command (`from vwmcp import vwmcp_bridge;
+  vwmcp_bridge.run_pending()`). Bump `BRIDGE_VERSION` and
+  `app.EXPECTED_BRIDGE_VERSION` together whenever the job/result format changes.
+- `src/vwmcp/client.py`: job folder protocol (`~/.vwmcp/jobs`, `results`), timeout + withdrawal, log.
+- `src/vwmcp/trigger.py`: macOS trigger: `osascript` → `run VectorScript` →
+  `DoMenuTextByName('MCP Run Job', 0)`. Guards: not running, launched <30 s,
+  previous Apple Event still pending after 10 s grace (= a dialog is open).
+- `src/vwmcp/vwlib.py`: helper library executed **inside** Vectorworks, sent with every
+  typed tool call. **Must stay Python 3.9** (VW 2026 embeds 3.9.2): no `match`,
+  no `X | Y`, stdlib only. `tests/test_calls.py` parses it with `feature_version=(3, 9)`.
+- `src/vwmcp/journal.py`: per-call revert journal (`~/.vwmcp/journal.jsonl`).
+- `src/vwmcp/tools/generic.py`, `tools/spotlight.py`: MCP tools (mcp 2.x `MCPServer`,
+  the renamed FastMCP). `app.py` holds the server, `vw()` helper, annotations.
+- `src/vwmcp/install.py` + `server.py`: `vwmcp` (stdio server), `vwmcp install-plugin`.
+- `scripts/install-macos.sh`: one-line installer (uv, bridge, Claude Desktop + Code config).
+  `scripts/install-windows.ps1` is experimental and untested.
+
+## Hard rules (learned by crashing the user's Vectorworks)
+
+- **Never** send `run Python script` over AppleScript. Writes, or any call during
+  launch / a modal dialog, segfault Vectorworks 2026. The only Apple Event the
+  server sends is the VectorScript menu hop.
+- **Never** poll Vectorworks in a loop with probes. Announce each live test to the
+  user, send one call at a time, and keep VectorScript in a file (shell quoting
+  broke it once).
+- The VW process is `…/Vectorworks 2026.app/Contents/MacOS/Vectorworks`; check
+  crash reports in `~/Library/Logs/DiagnosticReports/` (`Vectorworks-*.ips`)
+  as ground truth for crashes.
+- A wrong `vs.*` signature shows a modal **Script Errors** dialog instead of
+  raising; the user must click OK before anything else runs. Check signatures
+  with `vw_vs_lookup` (live docstrings) first.
+- Vectorworks merges consecutive scripted runs of MCP Run Job into one Cmd-Z.
+  Per-call undo is `vw_revert_last` (journal). Don't promise Cmd-Z granularity.
+- Test writes on throwaway documents only; ask the user which files are safe.
+
+## Development
+
+```bash
+uv sync
+uv run pytest -q          # 59 tests; fake executor runs the real bridge code
+uv run vwmcp              # stdio server
+uv build                  # wheel must contain vwmcp/_plugin/vwmcp_bridge.py
+```
+
+- TDD for server-side logic (protocol, trigger, journal, verification, reports).
+  Code that runs inside Vectorworks is validated **live** instead (a fake `vs`
+  only encodes our assumptions); record findings in `docs/vs-notes.md`.
+- Live checks without the MCP client: `from vwmcp.client import Bridge;
+  from vwmcp.calls import call; call(Bridge(timeout=30), "document_info")`.
+- Full MCP round trip: spawn `uv run --project . vwmcp` with
+  `mcp.client.stdio.stdio_client` and call tools.
+- Commits use the user's global git identity (giorgiomoroder). Don't push
+  without the user's OK.
+
+## Roadmap / TODO
+
+Next (from real use, 2026-10-16):
+- [ ] **Drawing tools.** A full 3D floor-plan build used only `vw_exec_python` (13 raw
+      writes, none revertable). Add typed, journaled tools: `vw_draw_walls`
+      (thickness via `SetComponentWidth`, height via `SetWallCornerHeights`),
+      `vw_insert_door`/`window` (Door PIO quirks in vs-notes), `vw_extrude`
+      (polygon + height; use 48-gons for round things), `vw_create_layer`/`class`,
+      `vw_delete_objects`, `vw_set_view` (Top/Plan, iso, fit to objects).
+- [ ] **`vw_screenshot`**: capture the Vectorworks document window (CGWindowList
+      window id via JXA + `screencapture -x -o -l <id>`; needs Screen Recording
+      permission) and return it as an image so Claude can check its own drawing.
+- [ ] Put the key 3D/drawing gotchas into the MCP `INSTRUCTIONS` / tool docs.
+- [ ] Journal raw Python better: optional "created objects" capture (diff UUIDs
+      before/after) so `vw_revert_last` can delete what `vw_exec_python` drew.
+
+Beta hardening:
+- [ ] Gather tester reports (issue forms: bug + "works on my setup", label `compatibility`).
+- [ ] Other VW versions: add majors to `app.TESTED_VW_MAJORS` only after live testing;
+      `VWMCP_APP` env var covers the app name.
+- [ ] Non-English VW: menu category names differ in README steps; check that
+      `DoMenuTextByName` works with the English command name we create.
+- [ ] Windows trigger (none today; user runs MCP Run Job by hand). Candidate:
+      a dialog with `RegisterDialogForTimerEvents` as an explicit "listen" mode.
+- [ ] `LDevice_*` functions: find real signatures (currently avoided).
+- [ ] Clean up stale `~/.vwmcp/results/*.json` from jobs whose server timed out.
+- [ ] Undo menu label: `vs.NameUndoEvent` has no visible effect; investigate.
+
+Distribution:
+- [ ] PyPI release (`vwmcp`; check the name is free), then MCP registry
+      (`server.json` + `mcp-name` comment in README are ready).
+- [ ] CI (GitHub Actions: `uv run pytest` on macOS + Linux).
+- [ ] Stretch from the original brief: ConnectCAD signal/cable tools,
+      Vision/MVR export, GDTF fixture mapping.
+
+## Design decisions already made (don't relitigate)
+
+- Transport: job folder + AppleScript→menu-command hop (user chose it after the
+  direct-Python crash findings). No in-app polling loop.
+- Bridge location: user Plug-ins subfolder `Plug-ins/vwmcp/` (user approved).
+- `vw_undo_mark` from the brief replaced by `vw_revert_last` + journal (user approved).
+- Objects are addressed by UUID (`GetObjectUuid` / `GetObjectByUuid`), never handles.
+- Lighting Device address edits go through `UniverseAddress`; write tools re-read
+  in a second request and report `not_applied`.
