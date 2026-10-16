@@ -66,19 +66,33 @@ uv build                  # wheel must contain vwmcp/_plugin/vwmcp_bridge.py
 
 ## Roadmap / TODO
 
-Next (from real use, 2026-10-16):
-- [ ] **Drawing tools.** A full 3D floor-plan build used only `vw_exec_python` (13 raw
-      writes, none revertable). Add typed, journaled tools: `vw_draw_walls`
-      (thickness via `SetComponentWidth`, height via `SetWallCornerHeights`),
-      `vw_insert_door`/`window` (Door PIO quirks in vs-notes), `vw_extrude`
-      (polygon + height; use 48-gons for round things), `vw_create_layer`/`class`,
-      `vw_delete_objects`, `vw_set_view` (Top/Plan, iso, fit to objects).
+Next: **what Michael actually draws** (stated 2026-10-16): truss, lighting
+fixtures, stage parts, band members and instruments. These are mostly
+Spotlight plug-in objects and library symbols, so prefer native objects over
+hand-built geometry (walls/extrudes are secondary). Investigate each live
+on a throwaway doc and record findings in `docs/vs-notes.md`:
+- [ ] **Library access.** Browse and import symbols and resources from Vectorworks
+      libraries and Resource Manager favorites into the document (fixtures, truss,
+      musicians, backline, stage decks), not just symbols already in the file.
+      Find the right `vs` calls (resource lists / import) live.
+- [ ] **Truss.** Place straight truss runs, corners and towers (Spotlight truss
+      objects / Braceworks-ready symbols) by length, height and type; list existing truss.
+- [ ] **Lighting fixtures.** Insert Lighting Devices from a fixture symbol or GDTF,
+      hang them on a position or truss at a spacing, set Unit Number, Channel and
+      Purpose on insert (journaled), auto-number by position.
+- [ ] **Stage parts.** Stage decks/platforms/risers (Spotlight stage objects),
+      stairs, soft goods (borders, legs, drapes; `Soft Goods` PIO exists), at sizes.
+- [ ] **Band members and instruments.** Place people and backline symbols (drum
+      riser, amps, keys, mic stands) on the stage plot at positions, named and classed.
 - [ ] **`vw_screenshot`**: capture the Vectorworks document window (CGWindowList
       window id via JXA + `screencapture -x -o -l <id>`; needs Screen Recording
-      permission) and return it as an image so Claude can check its own drawing.
-- [ ] Put the key 3D/drawing gotchas into the MCP `INSTRUCTIONS` / tool docs.
+      permission) and return it as an image so Claude can check its work.
+- [ ] Generic helpers these need: `vw_create_layer`/`class`, `vw_delete_objects`,
+      `vw_move_objects`, `vw_set_view` (Top/Plan, iso, fit to objects). All journaled.
 - [ ] Journal raw Python better: optional "created objects" capture (diff UUIDs
       before/after) so `vw_revert_last` can delete what `vw_exec_python` drew.
+- [ ] Lower priority: architecture drawing tools (walls via `SetComponentWidth` /
+      `SetWallCornerHeights`, doors), only if venue shells are needed often.
 
 Beta hardening:
 - [ ] Gather tester reports (issue forms: bug + "works on my setup", label `compatibility`).
