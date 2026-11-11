@@ -418,3 +418,62 @@ def list_positions(include_devices=True):
     return {"positions": positions,
             "unassigned_device_count": len(devices.get("", [])),
             "device_positions_without_object": orphans}
+
+
+# ---- tracked raw Python (vw_exec_python) ---------------------------------------
+
+def _jsonable(value):
+    import json
+    try:
+        json.dumps(value)
+        return value
+    except (TypeError, ValueError):
+        return repr(value)
+
+
+def _uuid_parents():
+    """uuid -> parent uuid for every object ForEachObject reaches."""
+    out = {}
+
+    def add(h):
+        u = vs.GetObjectUuid(h)
+        if u:
+            p = vs.GetParent(h)
+            out[u] = "" if _is_nil(p) else _str(vs.GetObjectUuid(p))
+
+    vs.ForEachObject(add, "(ALL)")
+    return out
+
+
+def exec_tracked(code, track=True):
+    """Run user code like the bridge does (last expression or `result` is the
+    value) and report which objects it created, so they can be reverted.
+    Errors are returned, not raised, so a script that fails halfway still
+    reports what it already drew."""
+    import ast
+    import traceback
+    before = _uuid_parents() if track else None
+    scope = {"vs": vs, "__name__": "__vwmcp_user__"}
+    value, error, tb = None, None, None
+    try:
+        tree = ast.parse(code, "<vw_exec_python>", "exec")
+        last = None
+        if tree.body and isinstance(tree.body[-1], ast.Expr):
+            last = ast.Expression(tree.body.pop().value)
+        exec(compile(tree, "<vw_exec_python>", "exec"), scope)
+        if last is not None:
+            value = eval(compile(last, "<vw_exec_python>", "eval"), scope)
+        if "result" in scope:
+            value = scope["result"]
+    except BaseException as e:  # noqa: BLE001 - report, never crash Vectorworks
+        error = "%s: %s" % (type(e).__name__, e)
+        tb = traceback.format_exc()
+    out = {"value": _jsonable(value), "error": error, "traceback": tb,
+           "document": current_document()}
+    if track:
+        after = _uuid_parents()
+        new = set(after) - set(before)
+        # Keep only top-level new objects: deleting a new group removes its contents.
+        out["created"] = sorted(u for u in new if after[u] not in new)
+        out["deleted_existing"] = len(set(before) - set(after))
+    return out

@@ -37,7 +37,16 @@ def fake(tmp_path, monkeypatch):
     for mod in (app, generic, spotlight):
         monkeypatch.setattr(mod, "vw", f)
     monkeypatch.setattr(app, "get_journal", lambda: Journal(tmp_path / "j.jsonl"))
-    monkeypatch.setattr(generic, "_run_raw", lambda code: {"ok": True, "value": None, "stdout": "", "error": None, "traceback": None})
+    monkeypatch.setattr(generic, "_run_raw", lambda code, timeout=None: {"ok": True, "value": None, "stdout": "", "error": None, "traceback": None})
+
+    def call_result(bridge, fn, timeout=None, **kw):
+        assert fn == "exec_tracked"
+        created = ["r-1"] if "Rect" in kw["code"] else []
+        return {"value": {"value": None, "error": None, "traceback": None, "document": f.document,
+                          "created": created, "deleted_existing": 0}, "stdout": ""}
+
+    monkeypatch.setattr(generic.calls, "call_result", call_result)
+    monkeypatch.setattr(app, "get_bridge", lambda: None)
     return f
 
 
@@ -77,6 +86,15 @@ def test_exec_python_blocks_revert_unless_read_only(fake):
     assert generic.vw_revert_last()["reverted_tool"] == "vw_set_record"
 
     generic.vw_set_record("u1", "Notes", {"Note": "new"})
-    generic.vw_exec_python("vs.Rect(0,0,1,1)")
+    generic.vw_exec_python("vs.SetClass(h, 'x')")  # changes, creates nothing
     with pytest.raises(ToolError, match="vw_exec_python"):
         generic.vw_revert_last()
+
+
+def test_exec_python_created_objects_are_reverted(fake):
+    generic.vw_set_record("u1", "Notes", {"Note": "new"})
+    generic.vw_exec_python("vs.Rect(0,0,1,1)")
+    out = generic.vw_revert_last()
+    assert out["reverted_tool"] == "vw_exec_python" and "pre-existing" in out["note"]
+    assert fake.calls[-1][1]["ops"] == [{"op": "created", "uuid": "r-1"}]
+    assert generic.vw_revert_last()["reverted_tool"] == "vw_set_record"

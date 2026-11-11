@@ -25,12 +25,18 @@ def raise_for_result(res: dict) -> dict:
     return res
 
 
-def call(bridge: Bridge, fn: str, **kwargs):
-    """Run vwlib.<fn>(**kwargs) in Vectorworks and return its value."""
+def call_result(bridge: Bridge, fn: str, timeout: float | None = None, **kwargs) -> dict:
+    """Run vwlib.<fn>(**kwargs) in Vectorworks; return the full bridge result
+    (value, stdout, ...). Raises VWError if the helper itself raised."""
     # json.dumps -> repr gives a Python string literal, safe for any content.
     code = (
         f"{VWLIB_SOURCE}\n"
         "import json as _json\n"
         f"result = {fn}(**_json.loads({json.dumps(kwargs)!r}))\n"
     )
-    return raise_for_result(bridge.run(code))["value"]
+    return raise_for_result(bridge.run(code, timeout=timeout))
+
+
+def call(bridge: Bridge, fn: str, **kwargs):
+    """Run vwlib.<fn>(**kwargs) in Vectorworks and return its value."""
+    return call_result(bridge, fn, **kwargs)["value"]

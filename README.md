@@ -96,8 +96,9 @@ of your open drawing.
 | `vw_set_lighting_device_fields` | Bulk edit by position + unit number, channel, or uuid |
 | `vw_list_positions` | Positions with their devices, plus unassigned devices and orphan position names |
 | `vw_lighting_device_report` | Paperwork export (CSV or JSON), naturally sorted |
-| `vw_revert_last` | Undo exactly the last Claude edit in this drawing (repeatable) |
-| `vw_exec_python` | Run any Vectorworks Python (`vs.*`) and get stdout, value, traceback |
+| `vw_revert_last` | Undo exactly the last Claude edit in this drawing (repeatable), including objects a `vw_exec_python` call created |
+| `vw_exec_python` | Run any Vectorworks Python (`vs.*`) and get stdout, value, traceback; records created objects for revert; optional timeout |
+| `vw_exec_file` | Same as `vw_exec_python`, for a script file on the Mac |
 | `vw_vs_lookup` | Search the `vs.*` API of *your* Vectorworks, with signatures |
 
 ## Your drawing data and NDAs
@@ -134,8 +135,10 @@ anywhere except through your Claude app.
 - **Undo.** Vectorworks lumps back-to-back Claude edits into a single
   Cmd-Z, so Cmd-Z may undo several of them at once (never your own work).
   To undo exactly one Claude edit, ask Claude to "undo that" (`vw_revert_last`).
-  This works for all typed edit tools. Changes made with raw Python
-  (`vw_exec_python`) can only be undone with Cmd-Z.
+  This works for all typed edit tools and deletes the objects a raw Python
+  call (`vw_exec_python`) created, even if the script stopped halfway.
+  What raw Python changed on existing objects (moves, attributes,
+  deletions) can only be undone with Cmd-Z.
 - **Bulk edits are all-or-nothing.** If any device in a bulk edit can't be
   found or any field name is wrong, nothing changes. Unit numbers repeat per
   position, so give the position too.

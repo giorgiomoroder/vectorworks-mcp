@@ -89,7 +89,7 @@ on a throwaway doc and record findings in `docs/vs-notes.md`:
       permission) and return it as an image so Claude can check its work.
 - [ ] Generic helpers these need: `vw_create_layer`/`class`, `vw_delete_objects`,
       `vw_move_objects`, `vw_set_view` (Top/Plan, iso, fit to objects). All journaled.
-- [ ] Journal raw Python better: optional "created objects" capture (diff UUIDs
+- [x] Journal raw Python better: optional "created objects" capture (diff UUIDs
       before/after) so `vw_revert_last` can delete what `vw_exec_python` drew.
 - [ ] Maybe: import a 3D model file (e.g. a Blender FBX/OBJ export) as a symbol
       so custom pieces modeled elsewhere can be placed like library items.
