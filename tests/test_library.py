@@ -32,7 +32,7 @@ def test_roots_skip_missing_dirs(tmp_path):
 
 def test_find_matches_every_query_word_against_relative_path(tmp_path):
     app, home = make_tree(tmp_path)
-    kw = dict(platform="darwin", home=home, app_dir=app)
+    kw = dict(vw_version="2026", platform="darwin", home=home, app_dir=app)
     truss = library.find_library_files("truss", **kw)
     assert [(t["library"], t["name"]) for t in truss] == [
         ("vectorworks", "Truss Tomcat"), ("user", "My Truss")
@@ -51,3 +51,30 @@ def test_roots_follow_the_version(tmp_path):
     user.mkdir(parents=True)
     roots = library.library_roots("2027", platform="darwin", home=tmp_path / "home", app_dir=app)
     assert [r.path for r in roots] == [app / "Libraries", user]
+def test_german_library_folder_and_decomposed_umlauts(tmp_path):
+    import unicodedata
+
+    app = tmp_path / "Vectorworks 2027"
+    rel = unicodedata.normalize("NFD", "Bibliotheken/Gebäude/Tür (Stile)/Rahmentür.vwx")
+    (app / rel).parent.mkdir(parents=True)
+    (app / rel).write_bytes(b"")
+    kw = dict(vw_version="2027", platform="darwin", home=tmp_path / "home", app_dir=app)
+    assert [r.path.name for r in library.library_roots(**kw)] == ["Bibliotheken"]
+    found = library.find_library_files("tür rahmen", **kw)
+    assert [f["name"] for f in found] == [unicodedata.normalize("NFD", "Rahmentür")]
+
+
+def test_default_version_follows_config(monkeypatch, tmp_path):
+    import importlib
+    from vwmcp import config
+    monkeypatch.setenv("VWMCP_APP", "Vectorworks 2027")
+    monkeypatch.delenv("VWMCP_VW_VERSION", raising=False)
+    importlib.reload(config)
+    try:
+        user = tmp_path / "Library/Application Support/Vectorworks/2027/Bibliotheken"
+        user.mkdir(parents=True)
+        roots = library.library_roots(platform="darwin", home=tmp_path, app_dir=tmp_path / "none")
+        assert [(r.kind, r.path) for r in roots] == [("user", user)]
+    finally:
+        monkeypatch.delenv("VWMCP_APP")
+        importlib.reload(config)
