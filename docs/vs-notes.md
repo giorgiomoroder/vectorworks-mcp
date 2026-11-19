@@ -60,7 +60,8 @@ menu command gets a fresh Python state (module globals don't persist).
 
 ## Geometry read-back (Vectorworks 2027, live-tested)
 
-- Vectorworks 2027 (32.1) embeds **Python 3.14**; 2026 embeds 3.9.
+- Vectorworks 2027 (32.1) embeds **Python 3.14** (3.14.5 in 32.1.1); 2026 embeds 3.9.
+  vwlib stays 3.9-compatible so one prelude serves both.
 - `vs.GetBBox(h)` is the bounding box of the projection **on the screen
   plane**: with a rotated plan view the same object returns different,
   rotated coordinates. Don't use it for exact geometry.
@@ -351,3 +352,29 @@ inside a running script is not safe. Plain AppleScript to the app works
 - Probing from inside a job: start osascript detached (`sleep 1; osascript`
   in a new session) so the Apple Event arrives after the script has ended,
   and read its output file in the next call.
+
+## Vectorworks 2027 (live 2026-11-19, 32.1.1 build 888839, English, macOS)
+
+Same bridge, same trigger (`run VectorScript` → `DoMenuTextByName`), served
+from a second server (`VWMCP_VW_VERSION=2027`, `VWMCP_HOME=~/.vwmcp-2027`,
+bridge with `vwmcp_home.txt`). What was checked on a migrated copy of the
+sketch doc: `vw_ping`, `vw_document_info`, `vw_list_layers`, `vw_list_truss`,
+`vw_exec_python` (read and create + revert), `vw_export_geometry` (651
+objects, a 3D layer), `vw_render_layers`, `vw_duplicate_layer` + revert
+(`vs.DelObject` on the layer handle deletes it), `vw_set_vertices` + revert,
+`vw_list_documents`, `vw_switch_document` (same-document no-op). Not yet on
+2027: the Spotlight, truss, lighting-device and stage write tools.
+
+- The migrated workspace (Spotlight.vww) carries the **MCP Run Job** item,
+  but a `.vsm` copied into `2027/Plug-ins` after the first launch is not
+  loaded until the workspace is reloaded (Tools > Workspaces > pick it
+  again) or Vectorworks restarts; until then `DoMenuTextByName` silently
+  does nothing and jobs time out. Michael reloading the workspace was enough.
+- `name of every window` in 2027 lists a window named **"Vectorworks"**
+  first (visible, index 1), the document window second, then hidden helper
+  windows ("Migration Progress", "Exporting MVR", ""). `documents.py` asks
+  for visible windows only and skips the app-named one.
+- `vw_render_layers` on a 3D layer (extrudes, meshes, plug-ins) in a 3D
+  view shows only projected gray boxes (`bbox_view` from `GetBBox`); it is a
+  2D plan check, not a 3D view.
+- Type codes seen on the 3D layer without a `TYPE_NAMES` entry: 24 and 113.

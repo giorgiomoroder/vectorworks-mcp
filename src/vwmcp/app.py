@@ -16,7 +16,7 @@ from vwmcp.journal import Journal
 
 EXPECTED_BRIDGE_VERSION = "0.1.0"
 # Vectorworks major versions this release was tested against (31 = 2026).
-TESTED_VW_MAJORS = {31: "2026"}
+TESTED_VW_MAJORS = {31: "2026", 32: "2027"}  # 2027: 32.1.1, live 2026-11-19 (vs-notes)
 
 READ = ToolAnnotations(read_only_hint=True, open_world_hint=False)
 WRITE = ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=False)

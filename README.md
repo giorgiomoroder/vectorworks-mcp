@@ -2,8 +2,9 @@
 
 <!-- mcp-name: io.github.giorgiomoroder/vectorworks-mcp -->
 
-> **Beta.** Tested on Vectorworks 2026 (Update 3, English) with Spotlight on
-> macOS only. Other versions, languages and Windows may not work yet. Save
+> **Beta.** Tested on Vectorworks 2026 (Update 3, English) and 2027 (32.1,
+> English and German) with Spotlight on macOS only. Other versions, languages
+> and Windows may not work yet. Save
 > your file before asking for edits, and please
 > [report what you find](https://github.com/giorgiomoroder/vectorworks-mcp/issues/new/choose).
 > Working under an NDA? Read [Your drawing data](#your-drawing-data-and-ndas) first.
