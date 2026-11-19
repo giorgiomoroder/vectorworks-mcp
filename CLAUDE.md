@@ -39,6 +39,8 @@ before changing anything that touches Vectorworks.
   `config.DEFAULT_APP` by name); remembers document paths in
   `VWMCP_HOME/document_paths.json`. Write tools take `document=` and call
   `app.require_document` first (new write tools should too).
+- `src/vwmcp/render.py`: `vw_render_layers`, draws exported geometry to a PNG
+  (pure Python, no Screen Recording needed).
 - `src/vwmcp/screenshot.py`: `vw_screenshot`. CoreGraphics window list via ctypes +
   `screencapture -l <id>` + `sips`. No Apple Event, so it works while a dialog blocks.
 - `scripts/install-macos.sh`: one-line installer (uv, bridge, Claude Desktop + Code config).
@@ -73,7 +75,7 @@ before changing anything that touches Vectorworks.
 
 ```bash
 uv sync
-uv run pytest -q          # 125 tests; fake executor runs the real bridge code
+uv run pytest -q          # 146 tests; fake executor runs the real bridge code
 uv run vwmcp              # stdio server
 uv build                  # wheel must contain vwmcp/_plugin/vwmcp_bridge.py
 ```

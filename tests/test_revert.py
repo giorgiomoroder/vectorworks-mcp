@@ -98,3 +98,44 @@ def test_exec_python_created_objects_are_reverted(fake):
     assert out["reverted_tool"] == "vw_exec_python" and "pre-existing" in out["note"]
     assert fake.calls[-1][1]["ops"] == [{"op": "created", "uuid": "r-1"}]
     assert generic.vw_revert_last()["reverted_tool"] == "vw_set_record"
+
+
+class LayerVW(FakeVW):
+    def __call__(self, fn, **kw):
+        if fn == "duplicate_layer":
+            self.calls.append((fn, kw))
+            return {"document": self.document, "layer": kw["name"], "source": kw["source"], "objects": 3,
+                    "source_objects": 3, "scale": 100.0, "visibility": -1, "after_source": True}
+        if fn == "set_vertices":
+            self.calls.append((fn, kw))
+            return {"document": self.document, "uuid": kw["uuid"], "type": "Polyline", "applied": True,
+                    "before": {"points": [[0, 0], [1, 0], [1, 1]]}, "points": kw["points"],
+                    "area_before": 0.5, "area": 1.0, "closed": True}
+        return super().__call__(fn, **kw)
+
+
+@pytest.fixture
+def layer_fake(tmp_path, monkeypatch):
+    f = LayerVW()
+    for mod in (app, generic):
+        monkeypatch.setattr(mod, "vw", f)
+    monkeypatch.setattr(app, "get_journal", lambda: Journal(tmp_path / "j.jsonl"))
+    return f
+
+
+def test_duplicate_layer_is_journaled_as_layer_created(layer_fake):
+    out = generic.vw_duplicate_layer("EG", "EG var2")
+    assert out["layer"] == "EG var2" and "warning" not in out and "document" not in out
+    assert layer_fake.calls[0] == ("duplicate_layer", {"source": "EG", "name": "EG var2",
+                                                         "visibility": None, "uuid_map": False})
+    generic.vw_revert_last()
+    assert layer_fake.calls[-1][1]["ops"] == [{"op": "layer_created", "name": "EG var2"}]
+
+
+def test_set_vertices_journals_previous_vertices_for_revert(layer_fake):
+    pts = [[0, 0], [2, 0], [2, 1], [0, 1]]
+    out = generic.vw_set_vertices("p1", pts)
+    assert out["area"] == 1.0 and out["applied"] and "before" not in out
+    generic.vw_revert_last()
+    assert layer_fake.calls[-1][1]["ops"] == [
+        {"op": "vertices", "uuid": "p1", "before": {"points": [[0, 0], [1, 0], [1, 1]]}}]

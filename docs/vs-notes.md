@@ -58,6 +58,57 @@ menu command gets a fresh Python state (module globals don't persist).
 - Top/Plan view: `vs.DoMenuTextByName('Standard Views', 1)`. Zoom to objects:
   select them, then `vs.DoMenuTextByName('Fit To Objects', 0)`.
 
+## Geometry read-back (Vectorworks 2027, live-tested)
+
+- Vectorworks 2027 (32.1) embeds **Python 3.14**; 2026 embeds 3.9.
+- `vs.GetBBox(h)` is the bounding box of the projection **on the screen
+  plane**: with a rotated plan view the same object returns different,
+  rotated coordinates. Don't use it for exact geometry.
+- Exact geometry: lines `GetSegPt1/2`; polygons `GetVertNum` + `GetPolyPt(h, i)`
+  (1-based); polylines `GetPolylineVertex(h, i)` → `(p, vertexType, arcRadius)`;
+  texts `GetTextOrientation(h)` → `(origin, angle, mirrored)`, `GetText`,
+  `GetTextSize(h, 0)`, `GetTextJust`; dimensions `GetDimText`.
+- Arcs: `HCenter` is the arc's center, `GetSegPt1/2` its start and end
+  points, `GetArc` → `(startAngle, sweep)` in degrees. Radius = distance
+  center → start point.
+- `vs.GetObjectUuid` + `vs.GetParent` over `ForEachObject(fn, "(ALL)")` gives
+  a cheap before/after snapshot to find the objects a script created.
+
+## Layers, vertices, attributes (Vectorworks 2027, found live on plan work)
+
+- Duplicate a design layer: `vs.CreateLayer(name, 1)` (becomes the active
+  layer, restore with `vs.Layer(previous)`), `vs.SetLScale(new, vs.GetLScale(src))`,
+  then `vs.CreateDuplicateObject(h, newLayerHandle)` for every top-level
+  object (collect the handles first). Order and groups are kept.
+- A new layer is visible and sits at the end of the layer list. Visibility is
+  `Get/SetObjectVariableInt(layer, 153)` (0 visible, -1 hidden, 2 gray).
+  `vs.HMoveBackward(layer, False)` / `vs.HMoveForward(layer, False)` move a
+  layer in the stack; one call can jump several places (seen: 13, past the
+  sheet layers), so re-read the order after every step.
+- Viewports: `vs.GetVPLayerVisibility(vp, layer)` -> `(ok, vis)`,
+  `vs.SetVPLayerVisibility(vp, layer, vis)`, then `vs.UpdateVP(vp)`.
+  Viewports are type 122 on sheet layers.
+- `vs.SetPolyPt(h, i, x, y)` works on polygons (type 5) but **silently does
+  nothing on polylines (type 21)**; use
+  `vs.SetPolylineVertex(h, i, (x, y), vertexType, radius, True)` there.
+  `vs.InsertVertex(h, x, y, beforeVertexNum, 0, 0)` and `vs.DelVertex(h, n)`
+  work on both; `vs.ResetBBox(h)` afterwards. `vs.HArea(h)` returned None.
+- New objects take the document defaults, not the look of their neighbors.
+  Read fill and pen first (`GetFPat`, `GetFillBack`, `GetFillFore`,
+  `GetPenFore`, `GetLW`, `GetLS`, `IsFPatByClass`, `IsFillColorByClass`,
+  `IsLWByClass`, `IsLSByClass`, `IsPenColorByClass`; colors are 16-bit
+  tuples) and copy them, or set them by class with the `Set...ByClass` calls.
+- `vs.SetParent(h, groupHandle)` moves a new object into an existing group.
+- Text: `vs.SetText(h, s)` replaces the string ("\r" is a line break),
+  `vs.GetTextOrientation(h)[0]` is the origin, `vs.SetTextJust(h, 1|2|3)`
+  left/center/right, `vs.SetTextVerticalAlign(h, 1..5)` top .. bottom.
+- Not validated live yet: `vs.DelObject(layerHandle)` to delete a layer
+  (used by the revert of `vw_duplicate_layer`; it reports "missing" if the
+  layer is still there afterwards), and `vw_duplicate_layer`,
+  `vw_set_vertices`, the `attrs` of `vw_export_geometry` and
+  `vw_render_layers` as typed tools (their vs calls all ran live through
+  `vw_exec_python`).
+
 ## Screenshots (outside Vectorworks)
 
 VectorScript can't save the viewport to a file (`ExportImageFile` only

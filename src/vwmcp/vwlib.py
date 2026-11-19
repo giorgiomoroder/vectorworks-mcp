@@ -213,6 +213,8 @@ def revert(ops):
     restored, deleted, moved, missing = 0, 0, 0, []
     for op in ops:
         kind = op["op"]
+        if kind == "layer_created":  # vw_duplicate_layer
+            kind = "layer"
         if kind == "layer":
             h = vs.GetLayerByName(op["name"])
         elif kind == "class":
@@ -224,7 +226,11 @@ def revert(ops):
         if _is_nil(h):
             missing.append(op.get("uuid") or op.get("name"))
             continue
-        if kind == "fields":
+        if kind == "vertices":
+            b = op["before"]
+            _apply_vertices(h, b["points"], b.get("vertex_types"), b.get("arc_radii"))
+            restored += 1
+        elif kind == "fields":
             _write_fields(h, op["record"], op["before"])
             restored += 1
         elif kind == "created" or kind == "layer" or kind == "resource":
@@ -1133,3 +1139,280 @@ def insert_stage_steps(x, y, stage_height, rotation=0.0, tread_width=None, steps
         vs.DelObject(h)
         raise
     return {"document": current_document(), "uuid": h_uuid(h), "steps": steps}
+
+
+# ---- geometry export (read-back) -----------------------------------------------
+
+def _pt(p, nd):
+    return [round(p[0], nd), round(p[1], nd)]
+
+
+def _geom(h, t, nd):
+    """Exact geometry for the common 2D types. vs.GetBBox depends on the plan
+    rotation of the view, so it is only used as a last resort."""
+    import math
+    g = {}
+    if t == 2:
+        g["points"] = [_pt(vs.GetSegPt1(h), nd), _pt(vs.GetSegPt2(h), nd)]
+    elif t in (5, 21):
+        n = vs.GetVertNum(h)
+        if t == 5:
+            g["points"] = [_pt(vs.GetPolyPt(h, i), nd) for i in range(1, n + 1)]
+        else:
+            pts, kinds, radii = [], [], []
+            for i in range(1, n + 1):
+                p, kind, radius = vs.GetPolylineVertex(h, i)
+                pts.append(_pt(p, nd))
+                kinds.append(kind)
+                radii.append(round(radius, nd))
+            g["points"] = pts
+            if any(kinds):
+                g["vertex_types"] = kinds  # 0 corner, 1 bezier, 2 cubic, 3 arc, 4 radius
+                g["arc_radii"] = radii
+        try:
+            g["closed"] = bool(vs.IsPolyClosed(h))
+        except Exception:  # noqa: BLE001 - optional
+            pass
+    elif t == 6:
+        c = vs.HCenter(h)
+        p1, p2 = vs.GetSegPt1(h), vs.GetSegPt2(h)
+        start, sweep = vs.GetArc(h)
+        g.update({"center": _pt(c, nd), "radius": round(math.hypot(p1[0] - c[0], p1[1] - c[1]), nd),
+                  "start_angle": round(start, 6), "sweep": round(sweep, 6),
+                  "points": [_pt(p1, nd), _pt(p2, nd)]})
+    elif t == 10:
+        origin, angle, mirrored = vs.GetTextOrientation(h)
+        g.update({"text": _str(vs.GetText(h)), "origin": _pt(origin, nd), "angle": round(angle, 6),
+                  "size_raw": vs.GetTextSize(h, 0), "just": vs.GetTextJust(h)})  # unit unclear
+    elif t == 63:
+        g.update({"text": _str(vs.GetDimText(h)), "center": _pt(vs.HCenter(h), nd)})
+    else:
+        (x1, y1), (x2, y2) = vs.GetBBox(h)
+        g.update({"center": _pt(vs.HCenter(h), nd),
+                  "bbox_view": [_pt((min(x1, x2), min(y1, y2)), nd), _pt((max(x1, x2), max(y1, y2)), nd)]})
+    return g
+
+
+def _hex(color):
+    return "#%02x%02x%02x" % tuple(int(v) >> 8 for v in color[:3])
+
+
+def _attrs(h):
+    """Fill and pen as the object is drawn, and whether they follow its class.
+    fill pattern: 0 none, 1 solid background color, 2 solid foreground color,
+    other values are patterns / hatches. pen weight in mils (4 = 0.1 mm),
+    pen style 0 = no line, 2 = solid, negative = a dash style."""
+    return {
+        "fill": {
+            "pattern": vs.GetFPat(h), "back": _hex(vs.GetFillBack(h)), "fore": _hex(vs.GetFillFore(h)),
+            "by_class": {"pattern": bool(vs.IsFPatByClass(h)), "color": bool(vs.IsFillColorByClass(h))},
+        },
+        "pen": {
+            "color": _hex(vs.GetPenFore(h)), "weight": vs.GetLW(h), "style": vs.GetLSN(h),
+            "by_class": {"color": bool(vs.IsPenColorByClass(h)), "weight": bool(vs.IsLWByClass(h)),
+                         "style": bool(vs.IsLSByClass(h))},
+        },
+    }
+
+
+def export_geometry(layer=None, classes=None, limit=20000, digits=4, attributes=True):
+    """All objects of one layer (default: active) with exact 2D geometry,
+    descending into groups. Plug-in objects (chain dimensions, doors...)
+    are reported as one entry with their center. attributes: add fill and
+    pen of every object ("attrs")."""
+    lay = vs.ActLayer() if not layer else vs.GetLayerByName(layer)
+    if _is_nil(lay):
+        raise LookupError("no layer named %r" % layer)
+    want = set(classes) if classes else None
+    out, truncated = [], [False]
+
+    def walk(h, group):
+        while not _is_nil(h):
+            if len(out) >= limit:
+                truncated[0] = True
+                return
+            t = vs.GetTypeN(h)
+            if t == 11:
+                walk(vs.FInGroup(h), group + [h_uuid(h)])
+            else:
+                cls = _str(vs.GetClass(h))
+                if want is None or cls in want:
+                    e = {"uuid": h_uuid(h), "type": TYPE_NAMES.get(t, "Type %d" % t),
+                         "type_code": t, "class": cls}
+                    if group:
+                        e["group"] = group[-1]
+                    if t == 86:
+                        e["plugin"] = pio_name(h)
+                    e.update(_geom(h, t, digits))
+                    if attributes:
+                        e["attrs"] = _attrs(h)
+                    out.append(e)
+            h = vs.NextObj(h)
+
+    walk(vs.FInLayer(lay), [])
+    return {"document": current_document(), "layer": _str(vs.GetLName(lay)),
+            "objects": out, "truncated": truncated[0]}
+
+
+# ---- layers ---------------------------------------------------------------------
+
+VISIBILITY = {"visible": 0, "hidden": -1, "gray": 2}
+
+
+def _layer_names():
+    out = []
+    layer = vs.FLayer()
+    while not _is_nil(layer):
+        out.append(_str(vs.GetLName(layer)))
+        layer = vs.NextLayer(layer)
+    return out
+
+
+def _pair_uuids(a, b, out):
+    """uuid of an object -> uuid of its duplicate, walking groups in parallel."""
+    out[h_uuid(a)] = h_uuid(b)
+    if vs.GetTypeN(a) == 11 and vs.GetTypeN(b) == 11:
+        x, y = vs.FInGroup(a), vs.FInGroup(b)
+        while not _is_nil(x) and not _is_nil(y):
+            _pair_uuids(x, y, out)
+            x, y = vs.NextObj(x), vs.NextObj(y)
+
+
+def _move_layer_next_to(layer, name, source):
+    """Step `layer` through the stack until it sits right after `source` in
+    list order. HMoveBackward / HMoveForward on a layer handle move it one
+    or more places; the direction is taken from what the first step did."""
+    def gap():
+        names = _layer_names()
+        return names.index(name) - names.index(source)
+
+    start = gap()
+    if start == 1:
+        return
+    vs.HMoveBackward(layer, False)
+    backward_lowers = gap() < start
+    for _ in range(4 * len(_layer_names())):
+        g = gap()
+        if g == 1:
+            return
+        lower = g > 1
+        if lower == backward_lowers:
+            vs.HMoveBackward(layer, False)
+        else:
+            vs.HMoveForward(layer, False)
+        if gap() == g:
+            return  # stuck (e.g. sheet layers in between): leave it there
+
+
+def duplicate_layer(source, name, visibility=None, uuid_map=False):
+    """Copy a design layer with all its objects: same scale, placed right
+    after the source in the layer list. visibility: "visible", "hidden",
+    "gray" or None (same as the source has now). The active layer stays
+    active. uuid_map: also return {source object uuid: copy uuid}."""
+    src = vs.GetLayerByName(source)
+    if _is_nil(src):
+        raise LookupError("no layer named %r" % source)
+    if vs.GetObjectVariableInt(src, 154) == 2:
+        raise ValueError("%r is a sheet layer; only design layers can be duplicated" % source)
+    if not _is_nil(vs.GetLayerByName(name)):
+        raise ValueError("a layer named %r already exists" % name)
+    if visibility is not None and visibility not in VISIBILITY:
+        raise ValueError("visibility must be one of %r or None" % sorted(VISIBILITY))
+    active = _str(vs.GetLName(vs.ActLayer()))
+    originals = []
+    h = vs.FInLayer(src)
+    while not _is_nil(h):
+        originals.append(h)
+        h = vs.NextObj(h)
+    new = vs.CreateLayer(name, 1)
+    vs.SetLScale(new, vs.GetLScale(src))
+    mapping, copied = {}, 0
+    for h in originals:
+        d = vs.CreateDuplicateObject(h, new)
+        if _is_nil(d):
+            continue
+        copied += 1
+        if uuid_map:
+            _pair_uuids(h, d, mapping)
+    vis = vs.GetObjectVariableInt(src, 153) if visibility is None else VISIBILITY[visibility]
+    vs.SetObjectVariableInt(new, 153, vis)
+    _move_layer_next_to(new, name, source)
+    _activate_layer(active)
+    names = _layer_names()
+    out = {"document": current_document(), "layer": name, "source": source,
+           "objects": copied, "source_objects": len(originals), "scale": vs.GetLScale(new),
+           "visibility": vis, "after_source": names.index(name) - names.index(source) == 1}
+    if uuid_map:
+        out["uuid_map"] = mapping
+    return out
+
+
+# ---- polygon / polyline vertices ------------------------------------------------
+
+def _vertices(h):
+    t = vs.GetTypeN(h)
+    n = vs.GetVertNum(h)
+    if t == 5:
+        return {"points": [list(vs.GetPolyPt(h, i)) for i in range(1, n + 1)]}
+    pts, kinds, radii = [], [], []
+    for i in range(1, n + 1):
+        p, kind, radius = vs.GetPolylineVertex(h, i)
+        pts.append(list(p))
+        kinds.append(kind)
+        radii.append(radius)
+    return {"points": pts, "vertex_types": kinds, "arc_radii": radii}
+
+
+def _apply_vertices(h, points, vertex_types=None, arc_radii=None):
+    """Make the vertex list of a polygon (type 5) or polyline (type 21) equal
+    to `points`. SetPolyPt silently does nothing on polylines, so those go
+    through SetPolylineVertex."""
+    n = vs.GetVertNum(h)
+    while n > len(points):
+        vs.DelVertex(h, n)
+        n -= 1
+    while n < len(points):
+        vs.InsertVertex(h, points[0][0], points[0][1], n, 0, 0)
+        n += 1
+    polyline = vs.GetTypeN(h) == 21
+    for i, p in enumerate(points):
+        if polyline:
+            kind = vertex_types[i] if vertex_types else 0
+            radius = arc_radii[i] if arc_radii else 0
+            vs.SetPolylineVertex(h, i + 1, (p[0], p[1]), kind, radius, True)
+        else:
+            vs.SetPolyPt(h, i + 1, p[0], p[1])
+    vs.ResetBBox(h)
+
+
+def _shoelace(points):
+    n = len(points)
+    return abs(sum(points[i][0] * points[(i + 1) % n][1] - points[(i + 1) % n][0] * points[i][1]
+                   for i in range(n))) / 2.0
+
+
+def set_vertices(uuid, points, vertex_types=None, arc_radii=None):
+    """Replace all vertices of a polygon or polyline. Re-reads them afterwards
+    and reports whether every point arrived ("applied")."""
+    h = handle(uuid)
+    t = vs.GetTypeN(h)
+    if t not in (5, 21):
+        raise TypeError("%s is a %s; only polygons and polylines have editable vertices"
+                        % (uuid, TYPE_NAMES.get(t, "Type %d" % t)))
+    if len(points) < 2:
+        raise ValueError("need at least 2 points")
+    for name, extra in (("vertex_types", vertex_types), ("arc_radii", arc_radii)):
+        if extra is not None and len(extra) != len(points):
+            raise ValueError("%s must have one entry per point" % name)
+    if t == 5 and vertex_types and any(vertex_types):
+        raise ValueError("curved vertices need a polyline; this object is a polygon")
+    before = _vertices(h)
+    _apply_vertices(h, points, vertex_types, arc_radii)
+    after = _vertices(h)["points"]
+    applied = len(after) == len(points) and all(
+        abs(a[0] - p[0]) < 1e-6 and abs(a[1] - p[1]) < 1e-6 for a, p in zip(after, points))
+    return {"document": current_document(), "uuid": uuid,
+            "type": TYPE_NAMES.get(vs.GetTypeN(h), "Type %d" % vs.GetTypeN(h)),
+            "before": before, "points": after, "applied": applied,
+            "area_before": _shoelace(before["points"]), "area": _shoelace(after),
+            "closed": bool(vs.IsPolyClosed(h))}

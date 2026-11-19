@@ -10,7 +10,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.mcpserver.utilities.types import Image
 from mcp.types import TextContent
 
-from vwmcp import app, calls, documents, screenshot
+from vwmcp import app, calls, documents, render, screenshot
 from vwmcp.app import READ, WRITE, mcp, vw
 from vwmcp.client import BridgeError
 from vwmcp.journal import JournalError
@@ -193,6 +193,175 @@ def vw_switch_document(name: str) -> dict:
 
 
 @mcp.tool(annotations=READ)
+def vw_export_geometry(
+    layer: str | None = None,
+    classes: list[str] | None = None,
+    out_path: str | None = None,
+    limit: int = 20000,
+    timeout: float | None = 60,
+    attributes: bool = True,
+) -> dict:
+    """Read back the 2D geometry of one layer (default: active layer), in
+    document units: lines and polygons as points, arcs as center/radius/
+    angles, texts with origin and string, dimensions with their text.
+    Descends into groups; plug-in objects (chain dimensions, doors) are one
+    entry each. Use it to verify what is really in the file, e.g. to render
+    it over a scan. Optionally filter by exact class names.
+
+    attributes (default on): every object also gets "attrs" with its fill
+    (pattern 0 none / 1 solid background color / 2 solid foreground color,
+    colors as #rrggbb) and pen (color, weight in mils, style) and whether
+    each follows the class ("by_class"). Compare these with neighboring
+    objects before drawing new ones in the same style.
+
+    With out_path (a file path on this Mac, e.g. in the project folder) the
+    full JSON is written there and only a summary is returned; use that for
+    large layers to keep the conversation small."""
+    try:
+        res = calls.call_result(
+            app.get_bridge(), "export_geometry", timeout=timeout,
+            layer=layer, classes=classes, limit=limit, attributes=attributes,
+        )
+    except calls.VWError as e:
+        raise ToolError(f"{e}\n\n{e.traceback}".strip()) from e
+    except BridgeError as e:
+        raise ToolError(str(e)) from e
+    data = res["value"]
+    if not out_path:
+        return data
+    path = Path(out_path).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"path": str(path), **geometry_summary(data)}
+
+
+def geometry_summary(data: dict) -> dict:
+    """Counts per type and class plus the extent of all points."""
+    by_type: dict[str, int] = {}
+    by_class: dict[str, int] = {}
+    xs: list[float] = []
+    ys: list[float] = []
+    for o in data["objects"]:
+        by_type[o["type"]] = by_type.get(o["type"], 0) + 1
+        by_class[o["class"]] = by_class.get(o["class"], 0) + 1
+        for p in o.get("points") or []:
+            xs.append(p[0])
+            ys.append(p[1])
+        for key in ("origin", "center"):
+            if key in o:
+                xs.append(o[key][0])
+                ys.append(o[key][1])
+    extent = [[min(xs), min(ys)], [max(xs), max(ys)]] if xs else None
+    return {
+        "document": data["document"], "layer": data["layer"], "count": len(data["objects"]),
+        "truncated": data["truncated"], "by_type": by_type, "by_class": by_class, "extent": extent,
+    }
+
+
+@mcp.tool(annotations=READ)
+def vw_render_layers(
+    layers: list[str] | None = None,
+    bbox: list[float] | None = None,
+    classes: list[str] | None = None,
+    max_size: int = 1600,
+    fills: bool = True,
+    out_path: str | None = None,
+    timeout: float | None = 60,
+) -> Image:
+    """Picture of design layers drawn from their real geometry, independent
+    of what the Vectorworks window shows (no Screen Recording needed). Use
+    it to check drawing work on any layer, visible or not.
+
+    layers: layer names, drawn in this order (default: the active layer).
+    bbox: [x_min, y_min, x_max, y_max] in document units to zoom in
+    (default: everything). max_size: long side in px. out_path: also save
+    the PNG there. It is a check picture, not a plot: object colors, solid
+    fills and line weights are shown; hatches, dash styles, opacity and
+    curved polyline segments are not, texts are only marked with a small
+    cross at their origin, and symbols / plug-in objects are gray boxes.
+    All fills are painted below all lines."""
+    exported = []
+    for name in layers or [None]:
+        try:
+            res = calls.call_result(
+                app.get_bridge(), "export_geometry", timeout=timeout,
+                layer=name, classes=classes, limit=20000, attributes=True,
+            )
+        except calls.VWError as e:
+            raise ToolError(f"{e}\n\n{e.traceback}".strip()) from e
+        except BridgeError as e:
+            raise ToolError(str(e)) from e
+        exported.append(res["value"])
+    try:
+        data, _info = render.render(exported, bbox=bbox, max_size=max_size, fills=fills)
+    except ValueError as e:
+        raise ToolError(str(e)) from e
+    if out_path:
+        path = Path(out_path).expanduser()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    return Image(data=data, format="png")
+
+
+@mcp.tool(annotations=WRITE)
+def vw_duplicate_layer(
+    source: str,
+    name: str,
+    visibility: str | None = None,
+    uuid_map: bool = False,
+    document: str | None = None,
+) -> dict:
+    """Copy a design layer with all its objects, e.g. to try a variant
+    without touching the original. The copy keeps the scale, is placed
+    right after the source in the layer list, and the active layer stays
+    active. visibility: "visible", "hidden" or "gray"; default: the same as
+    the source has now (layers share coordinates, so a visible copy lies
+    exactly on top of the original). uuid_map=True also returns
+    {source object uuid: copy uuid}, including objects inside groups.
+    Revertible with vw_revert_last (deletes the copy).
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
+    out = vw("duplicate_layer", source=source, name=name, visibility=visibility, uuid_map=uuid_map)
+    app.get_journal().record(out.pop("document"), "vw_duplicate_layer",
+                             [{"op": "layer_created", "name": name}])
+    if out["objects"] != out["source_objects"]:
+        out["warning"] = (f"Only {out['objects']} of {out['source_objects']} objects were copied; "
+                          "check the layer before working on it.")
+    if not out["after_source"]:
+        out["warning"] = (out.get("warning", "") + " The copy could not be moved next to the "
+                          "source in the layer list.").strip()
+    return out
+
+
+@mcp.tool(annotations=WRITE)
+def vw_set_vertices(
+    uuid: str,
+    points: list[list[float]],
+    vertex_types: list[int] | None = None,
+    arc_radii: list[float] | None = None,
+    document: str | None = None,
+) -> dict:
+    """Replace all vertices of a polygon or polyline with `points`
+    ([[x, y], ...] in document units), adding or removing vertices as
+    needed. Works the same for both object types (the plain vs.SetPolyPt
+    silently does nothing on polylines). vertex_types / arc_radii (one per
+    point; 0 corner, 1 bezier, 2 cubic, 3 arc, 4 radius) only for
+    polylines; default all corners. Returns the points read back, the area
+    before and after, and "applied": false with a warning if Vectorworks
+    did not take every point. Revertible with vw_revert_last.
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
+    out = vw("set_vertices", uuid=uuid, points=points, vertex_types=vertex_types, arc_radii=arc_radii)
+    app.get_journal().record(out.pop("document"), "vw_set_vertices",
+                             [{"op": "vertices", "uuid": uuid, "before": out.pop("before")}])
+    if not out["applied"]:
+        out["warning"] = "Vectorworks did not apply every point; compare `points` with what you sent."
+    return out
+
+
+@mcp.tool(annotations=READ)
 def vw_vs_lookup(query: str, limit: int = 25) -> list[dict]:
     """Search the live vs.* API (names and built-in docs) of the running
     Vectorworks, e.g. "record field", "symbol insert", "LDevice". Returns
@@ -313,8 +482,9 @@ def vw_insert_symbol(
 def vw_revert_last(document: str | None = None) -> dict:
     """Undo exactly the last MCP write in the active document: restores the
     previous field values of vw_set_record / vw_set_lighting_device_fields,
-    deletes the symbol vw_insert_symbol placed, or deletes the objects a
-    vw_exec_python call created. Call repeatedly to step further back.
+    the previous vertices after vw_set_vertices, deletes the symbol
+    vw_insert_symbol placed, the layer vw_duplicate_layer made, or the
+    objects a vw_exec_python call created. Call repeatedly to step further back.
     (Vectorworks' own Cmd-Z merges consecutive MCP edits.) A vw_exec_python
     call that created nothing (it only changed existing objects) can't be
     reverted and blocks stepping further back.

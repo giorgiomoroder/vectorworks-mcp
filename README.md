@@ -125,6 +125,10 @@ uvx --from git+https://github.com/giorgiomoroder/vectorworks-mcp vwmcp doctor
 | `vw_create_layer`, `vw_create_class`, `vw_move_objects`, `vw_delete_objects` | Document housekeeping; all but delete are revertible |
 | `vw_set_view` | Top/Plan, standard 3D views, fit to objects (e.g. before a screenshot) |
 | `vw_list_documents` / `vw_switch_document` | List the open documents and bring a saved one to the front (AppleScript, no extra permission). Write tools take an optional `document=` and refuse if another document is active |
+| `vw_export_geometry` | Exact 2D geometry of a layer (lines, polygons, arcs, texts, dimensions) as JSON, inline or written to a file; with fill and pen of every object and whether they follow the class |
+| `vw_render_layers` | Picture of any design layers drawn from their real geometry (optionally a zoomed area), independent of the screen; no Screen Recording needed |
+| `vw_duplicate_layer` | Copy a design layer with its objects next to the original (same scale, visibility as the source by default); can return the uuid mapping; revertible |
+| `vw_set_vertices` | Replace the vertices of a polygon or polyline, with read-back check and area before/after; revertible |
 | `vw_revert_last` | Undo exactly the last Claude edit in this drawing (repeatable), including objects a `vw_exec_python` call created |
 | `vw_exec_python` | Run any Vectorworks Python (`vs.*`) and get stdout, value, traceback; records created objects for revert; optional timeout |
 | `vw_exec_file` | Same as `vw_exec_python`, for a script file on the Mac |
