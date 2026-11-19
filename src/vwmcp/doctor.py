@@ -17,7 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from vwmcp import app, install
+from vwmcp import app, config, install
 from vwmcp.client import DEFAULT_ROOT
 
 STALE_RESULT_AGE = 60 * 60  # results nobody collected (server timed out / died)
@@ -42,7 +42,7 @@ def claude_desktop_config(home: Path, platform: str = sys.platform) -> Path:
     return home / "Library/Application Support/Claude/claude_desktop_config.json"
 
 
-def check_bridge(home: Path, vw_version: str, platform: str) -> Check:
+def check_bridge(home: Path, vw_version: str, platform: str, root: Path | None = None) -> Check:
     try:
         appdata = Path(os.environ.get("APPDATA", home / "AppData/Roaming"))
         folder = install.plugin_dir(vw_version, platform=platform, home=home, appdata=appdata)
@@ -56,7 +56,18 @@ def check_bridge(home: Path, vw_version: str, platform: str) -> Check:
     found = m.group(1) if m else "unknown"
     if found != app.EXPECTED_BRIDGE_VERSION:
         return Check("bridge", False, f"{found} installed, server expects {app.EXPECTED_BRIDGE_VERSION}", fix)
-    return Check("bridge", True, f"{found} at {folder}")
+    home_file = folder / install.HOME_FILE
+    serves = Path(home_file.read_text(encoding="utf-8").strip()).expanduser() if home_file.exists() else None
+    if root is not None:
+        expected = Path(root).expanduser()
+        bridge_root = serves if serves is not None else home / ".vwmcp"
+        if bridge_root != expected:
+            return Check(
+                "bridge", False,
+                f"{found} at {folder} runs jobs from {bridge_root}, but this server uses {expected}",
+                f"vwmcp install-plugin --vw-version {vw_version} --home {expected}",
+            )
+    return Check("bridge", True, f"{found} at {folder}" + (f", jobs from {serves}" if serves else ""))
 
 
 def _server_entry(path: Path) -> tuple[bool | None, str]:
@@ -148,7 +159,7 @@ def _log_age(line: str, now: float) -> float:
 def run_checks(
     home: Path | None = None,
     root: Path = DEFAULT_ROOT,
-    vw_version: str = "2026",
+    vw_version: str = config.VW_VERSION,
     platform: str = sys.platform,
     app_name: str | None = None,
     uptime: Callable[[], float | None] | None = None,
@@ -169,7 +180,7 @@ def run_checks(
         else:
             uptime = lambda: None  # noqa: E731
     return [
-        check_bridge(home, vw_version, platform),
+        check_bridge(home, vw_version, platform, root),
         check_claude_desktop(home, platform),
         check_claude_code(home),
         check_vectorworks(uptime(), app_name, platform),

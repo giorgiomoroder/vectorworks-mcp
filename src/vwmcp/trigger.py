@@ -18,8 +18,9 @@ from pathlib import Path
 
 from vwmcp.client import TriggerError
 
+from vwmcp.config import DEFAULT_APP  # noqa: F401  (re-exported for tools)
+
 MENU_COMMAND = "MCP Run Job"
-DEFAULT_APP = os.environ.get("VWMCP_APP", "Vectorworks 2026")
 MIN_UPTIME = float(os.environ.get("VWMCP_MIN_UPTIME", "30"))
 
 

@@ -13,6 +13,10 @@ before changing anything that touches Vectorworks.
   user-created **MCP Run Job** menu command (`from vwmcp import vwmcp_bridge;
   vwmcp_bridge.run_pending()`). Bump `BRIDGE_VERSION` and
   `app.EXPECTED_BRIDGE_VERSION` together whenever the job/result format changes.
+- `src/vwmcp/config.py`: `VWMCP_VW_VERSION` (default 2026) → app name, Plug-ins
+  and Libraries folders. One server per Vectorworks version; a second version
+  gets its own server, `VWMCP_HOME` and bridge (`install-plugin --home`, which
+  writes `vwmcp_home.txt` beside the bridge). See docs/claude-config.md.
 - `src/vwmcp/client.py`: job folder protocol (`~/.vwmcp/jobs`, `results`), timeout + withdrawal, log.
 - `src/vwmcp/trigger.py`: macOS trigger: `osascript` → `run VectorScript` →
   `DoMenuTextByName('MCP Run Job', 0)`. Guards: not running, launched <30 s,
@@ -64,7 +68,7 @@ before changing anything that touches Vectorworks.
 
 ```bash
 uv sync
-uv run pytest -q          # 119 tests; fake executor runs the real bridge code
+uv run pytest -q          # 124 tests; fake executor runs the real bridge code
 uv run vwmcp              # stdio server
 uv build                  # wheel must contain vwmcp/_plugin/vwmcp_bridge.py
 ```

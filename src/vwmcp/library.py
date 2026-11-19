@@ -10,6 +10,8 @@ one, happens in Vectorworks (vwlib.library_resources / import_resource).
 from __future__ import annotations
 
 import os
+
+from vwmcp import config
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,7 +26,7 @@ class LibraryRoot:
 
 
 def library_roots(
-    vw_version: str = "2026",
+    vw_version: str = config.VW_VERSION,
     platform: str = sys.platform,
     home: Path | None = None,
     app_dir: Path | None = None,

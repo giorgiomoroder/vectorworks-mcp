@@ -31,7 +31,7 @@ def run(home, root, **kw):
 
 def test_all_good(tmp_path):
     home = setup_home(tmp_path, bridge_version=app.EXPECTED_BRIDGE_VERSION)
-    checks = run(home, tmp_path / "vwmcp")
+    checks = run(home, home / ".vwmcp")
     assert all(c.ok for c in checks.values()), {n: c.detail for n, c in checks.items()}
     assert "/bin/sh x" in checks["claude_desktop"].detail
 
@@ -100,5 +100,17 @@ def test_log_summary(tmp_path):
 
 def test_report_format(tmp_path):
     home = setup_home(tmp_path, bridge_version=app.EXPECTED_BRIDGE_VERSION)
-    text = doctor.format_report(doctor.run_checks(home=home, root=tmp_path / "r", uptime=lambda: None, platform="darwin"))
+    text = doctor.format_report(doctor.run_checks(home=home, root=home / ".vwmcp", uptime=lambda: None, platform="darwin"))
     assert "FAIL vectorworks" in text and "ok   bridge" in text and "MCP Run Job" in text
+
+
+def test_bridge_home_file_must_match_server_root(tmp_path):
+    home = setup_home(tmp_path, bridge_version=app.EXPECTED_BRIDGE_VERSION)
+    root = tmp_path / "vwmcp-2027"
+    c = run(home, root)["bridge"]  # bridge has no home file: it serves ~/.vwmcp, not this root
+    assert c.ok is False and "runs jobs from" in c.detail and f"--home {root}" in c.fix
+    target = install.plugin_dir("2026", platform="darwin", home=home)
+    install.install_plugin(target, home=root)
+    c = run(home, root)["bridge"]
+    assert c.ok is True and f"jobs from {root}" in c.detail
+    assert run(home, home / ".vwmcp")["bridge"].ok is False

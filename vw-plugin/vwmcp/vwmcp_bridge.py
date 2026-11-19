@@ -22,6 +22,18 @@ import traceback
 
 BRIDGE_VERSION = "0.1.0"
 DEFAULT_ROOT = os.path.join(os.path.expanduser("~"), ".vwmcp")
+# Written by `vwmcp install-plugin --home`: lets each Vectorworks version run
+# its own server's jobs when several versions are installed side by side.
+HOME_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vwmcp_home.txt")
+
+
+def configured_root():
+    try:
+        with open(HOME_FILE, encoding="utf-8") as f:
+            text = f.read().strip()
+    except OSError:
+        return DEFAULT_ROOT
+    return os.path.expanduser(text) if text else DEFAULT_ROOT
 
 
 def _write_json_atomic(path, data):
@@ -74,11 +86,12 @@ def _claim_oldest(jobs_dir):
     return None
 
 
-def run_pending(root=DEFAULT_ROOT, vs_module=None, max_jobs=1):
-    """Run up to max_jobs queued jobs. Returns the number run."""
+def run_pending(root=None, vs_module=None, max_jobs=1):
+    """Run up to max_jobs queued jobs. Returns the number run. `root` defaults
+    to the folder named in vwmcp_home.txt beside this file, else ~/.vwmcp."""
     if vs_module is None:
         import vs as vs_module  # only importable inside Vectorworks
-    root = str(root)
+    root = str(configured_root() if root is None else root)
     jobs_dir = os.path.join(root, "jobs")
     results_dir = os.path.join(root, "results")
     os.makedirs(results_dir, exist_ok=True)

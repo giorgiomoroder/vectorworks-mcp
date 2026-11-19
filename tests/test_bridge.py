@@ -98,3 +98,16 @@ def test_corrupt_job_file_does_not_wedge_the_queue(root, fake_vs):
     res = read_result(root, "bad")
     assert res["ok"] is False
     assert list((root / "jobs").iterdir()) == []
+
+
+def test_root_comes_from_home_file_beside_the_bridge(tmp_path, fake_vs, monkeypatch):
+    other = tmp_path / "vwmcp-2027"
+    monkeypatch.setattr(bridge, "HOME_FILE", str(tmp_path / "vwmcp_home.txt"))
+    assert bridge.configured_root() == bridge.DEFAULT_ROOT
+    (tmp_path / "vwmcp_home.txt").write_text(str(other) + "\n")
+    assert bridge.configured_root() == str(other)
+    write_job(other, "h1", "'from 2027'")
+    assert bridge.run_pending(vs_module=fake_vs) == 1
+    assert read_result(other, "h1")["value"] == "from 2027"
+    (tmp_path / "vwmcp_home.txt").write_text("~/.vwmcp-x\n")
+    assert bridge.configured_root().endswith("/.vwmcp-x") and "~" not in bridge.configured_root()

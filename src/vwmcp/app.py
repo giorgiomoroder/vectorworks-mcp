@@ -10,7 +10,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from vwmcp import calls
+from vwmcp import calls, config
 from vwmcp.client import Bridge, BridgeError
 from vwmcp.journal import Journal
 
@@ -21,9 +21,10 @@ TESTED_VW_MAJORS = {31: "2026"}
 READ = ToolAnnotations(read_only_hint=True, open_world_hint=False)
 WRITE = ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=False)
 
-INSTRUCTIONS = """\
-Tools for a live Vectorworks session (Spotlight-focused). Every call runs
-inside the user's open document via the "MCP Run Job" menu command.
+INSTRUCTIONS = f"""\
+Tools for a live Vectorworks session (Spotlight-focused). This server talks
+to "{config.DEFAULT_APP}" only; every call runs inside that app's open
+document via the "MCP Run Job" menu command.
 
 - Vectorworks merges back-to-back MCP edits into one Cmd-Z step, so to undo
   exactly one tool call use vw_revert_last (works for typed write tools).

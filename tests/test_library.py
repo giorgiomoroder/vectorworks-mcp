@@ -42,3 +42,12 @@ def test_find_matches_every_query_word_against_relative_path(tmp_path):
     assert [t["name"] for t in library.find_library_files("rigging tomcat", **kw)] == ["Truss Tomcat"]
     assert len(library.find_library_files("", **kw)) == 4
     assert len(library.find_library_files("", limit=2, **kw)) == 2
+
+
+def test_roots_follow_the_version(tmp_path):
+    app = tmp_path / "Vectorworks 2027"
+    (app / "Libraries").mkdir(parents=True)
+    user = tmp_path / "home/Library/Application Support/Vectorworks/2027/Libraries"
+    user.mkdir(parents=True)
+    roots = library.library_roots("2027", platform="darwin", home=tmp_path / "home", app_dir=app)
+    assert [r.path for r in roots] == [app / "Libraries", user]

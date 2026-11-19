@@ -201,7 +201,8 @@ When reporting a problem, please use the
 | `vw_ping` warns about bridge version | Re-run the installer (or `uvx --from git+https://github.com/giorgiomoroder/vectorworks-mcp vwmcp install-plugin`). |
 | Nothing happens, no macOS permission prompt | System Settings ▸ Privacy & Security ▸ Automation: allow Claude (or Terminal) to control Vectorworks 2026. |
 | `vw_ping` warns the Vectorworks version is untested | It may work; save first, check results, and please open an issue either way. |
-| Different Vectorworks version | `VW_VERSION=2025` before the installer command, and set `VWMCP_APP="Vectorworks 2025"` in the server's environment. Only 2026 is tested. |
+| Different Vectorworks version | `VW_VERSION=2025 bash install-macos.sh`: installs the bridge for that version and registers a server with `VWMCP_VW_VERSION` set. Only 2026 is tested. |
+| Two versions at once (e.g. 2026 and 2027) | Run the installer once per version. Each gets its own server (`vectorworks`, `vectorworks-2027`), job folder and journal; see `docs/claude-config.md`. |
 
 ## Manual configuration
 
