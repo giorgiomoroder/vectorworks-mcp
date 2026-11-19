@@ -5,8 +5,9 @@ documents inside a running script is not safe. This module talks to
 Vectorworks from outside with plain AppleScript (Automation permission, the
 same one the job trigger already uses; no Accessibility permission):
 
-- `name of every window` lists the open documents (window 1 is the active
-  one; empty names and helper windows such as "Window" are skipped);
+- `name of every window whose visible is true` lists the open documents
+  (the first document window is the active one; empty names and helper
+  windows such as "Window" or, in 2027, "Vectorworks" are skipped);
 - `open POSIX file <path>` brings an already open, saved document to the
   front without opening it twice (setting a window's index does not select
   a document tab, live-tested on Vectorworks 2027).
@@ -31,12 +32,15 @@ from vwmcp.client import DEFAULT_ROOT
 # versions installed each server talks to its own app (the bundle id
 # "net.nemetschek.vectorworks" is shared between versions).
 APP = config.DEFAULT_APP
-HELPER_WINDOWS = {"", "Window", "Fenster"}
+# Non-document windows Vectorworks reports: unnamed and palette windows, and
+# (2027) a window named after the app itself. Invisible windows are left out
+# by the script ("Migration Progress", "Exporting MVR" exist hidden in 2027).
+HELPER_WINDOWS = {"", "Window", "Fenster", "Vectorworks"}
 STATE = DEFAULT_ROOT / "document_paths.json"
 
 LIST_SCRIPT = f'''
 set AppleScript's text item delimiters to linefeed
-tell application "{APP}" to return (name of every window) as text
+tell application "{APP}" to return (name of every window whose visible is true) as text
 '''
 
 OPEN_SCRIPT = f'''

@@ -27,6 +27,9 @@ def fake_vw(monkeypatch, tmp_path):
 def test_parse_windows_skips_helpers_and_duplicates():
     out = documents.parse_windows("A.vwx\n\nWindow\nB\nA.vwx\n")
     assert out == {"documents": ["A.vwx", "B"], "active": "A.vwx"}
+    # Vectorworks 2027 lists a window named after the app before the documents
+    out = documents.parse_windows("Vectorworks\nplan.vwx\nWindow\n")
+    assert out == {"documents": ["plan.vwx"], "active": "plan.vwx"}
 
 
 def test_switch_by_remembered_path(fake_vw):
