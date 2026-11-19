@@ -67,3 +67,25 @@ def bundled_bridge_source() -> str:
         return packaged.read_text(encoding="utf-8")
     repo = Path(__file__).resolve().parents[2] / "vw-plugin" / "vwmcp" / "vwmcp_bridge.py"
     return repo.read_text(encoding="utf-8")
+
+
+DOCUMENT_HINT = ("document: name of the document this call is meant for (as vw_document_info / "
+                 "vw_list_documents show it; \".vwx\" may be left out). If another document is "
+                 "active, nothing is changed and the call fails; use vw_switch_document first.")
+
+
+def _doc_key(name: str) -> str:
+    name = (name or "").strip()
+    if name.lower().endswith(".vwx"):
+        name = name[:-4]
+    return name.casefold()
+
+
+def require_document(document: str | None) -> None:
+    """Refuse a write when `document` is given and another document is active."""
+    if not document:
+        return
+    current = vw("current_document")
+    if _doc_key(current) != _doc_key(document):
+        raise ToolError(f"Not done: the active document is {current!r}, not {document!r}. "
+                        "Bring the right one to the front (vw_switch_document) and try again.")

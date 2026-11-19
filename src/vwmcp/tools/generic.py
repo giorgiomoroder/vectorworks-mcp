@@ -10,7 +10,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.mcpserver.utilities.types import Image
 from mcp.types import TextContent
 
-from vwmcp import app, calls, screenshot
+from vwmcp import app, calls, documents, screenshot
 from vwmcp.app import READ, WRITE, mcp, vw
 from vwmcp.client import BridgeError
 from vwmcp.journal import JournalError
@@ -78,7 +78,10 @@ def vw_ping() -> dict:
 
 
 @mcp.tool(annotations=WRITE)
-def vw_exec_python(code: str, modifies_document: bool = True, timeout: float | None = None) -> dict:
+def vw_exec_python(
+    code: str, modifies_document: bool = True, timeout: float | None = None,
+    document: str | None = None,
+) -> dict:
     """Run arbitrary Python inside Vectorworks with `vs` in scope.
 
     Returns stdout, the value of the last expression (or of a variable named
@@ -95,7 +98,10 @@ def vw_exec_python(code: str, modifies_document: bool = True, timeout: float | N
     code (faster, no journal entry). timeout: seconds to wait (default 30);
     raise it for large drawing scripts.
 
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first).
     """
+    app.require_document(document)
     if not modifies_document:
         res = _run_raw(code, timeout)
         return {k: res.get(k) for k in ("ok", "value", "stdout", "error", "traceback")}
@@ -130,17 +136,60 @@ def vw_exec_python(code: str, modifies_document: bool = True, timeout: float | N
 
 
 @mcp.tool(annotations=WRITE)
-def vw_exec_file(path: str, modifies_document: bool = True, timeout: float | None = 120) -> dict:
+def vw_exec_file(
+    path: str, modifies_document: bool = True, timeout: float | None = 120,
+    document: str | None = None,
+) -> dict:
     """Run a Python script file (a path on this Mac, e.g. in the project's
     _claude_scripts folder) inside Vectorworks, exactly like vw_exec_python
     with its contents: created objects are revertible. Default timeout 120 s
-    for large scripts."""
+    for large scripts.
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
     p = Path(path).expanduser()
     try:
         code = p.read_text(encoding="utf-8")
     except OSError as e:
         raise ToolError(f"Can't read {p}: {e}") from e
     return vw_exec_python(code, modifies_document=modifies_document, timeout=timeout)
+
+
+def _remember_active() -> None:
+    """Note the active document's path (Vectorworks' AppleScript doesn't report it)."""
+    try:
+        info = vw("document_info")
+        documents.remember(info.get("name", ""), info.get("path", ""))
+    except Exception:
+        pass  # a dialog may be open; listing still works without it
+
+
+@mcp.tool(annotations=READ)
+def vw_list_documents() -> dict:
+    """Open Vectorworks documents (front to back; `active` is the one all
+    other tools work on) and the known file paths. Uses AppleScript from
+    outside Vectorworks, no Accessibility permission needed."""
+    _remember_active()
+    try:
+        return documents.list_documents()
+    except documents.DocumentsError as e:
+        raise ToolError(str(e)) from e
+
+
+@mcp.tool(annotations=WRITE)
+def vw_switch_document(name: str) -> dict:
+    """Bring an open, saved document to the front: `name` as vw_list_documents
+    shows it (".vwx" may be left out) or its full path. Verified afterwards.
+    Unsaved documents can't be switched to; doesn't open closed files. All
+    other tools act on the active document, so check vw_document_info before
+    writing."""
+    _remember_active()
+    try:
+        out = documents.switch_document(name)
+    except documents.DocumentsError as e:
+        raise ToolError(str(e)) from e
+    _remember_active()
+    return out
 
 
 @mcp.tool(annotations=READ)
@@ -208,10 +257,15 @@ def vw_get_record(uuid: str, record: str) -> dict[str, Any]:
 
 
 @mcp.tool(annotations=WRITE)
-def vw_set_record(uuid: str, record: str, values: dict[str, Any]) -> dict[str, Any]:
+def vw_set_record(
+    uuid: str, record: str, values: dict[str, Any], document: str | None = None
+) -> dict[str, Any]:
     """Set record fields (or plug-in parameters) on one object; unknown field
     names are rejected before anything changes. One undo step. Returns the
-    record afterwards."""
+    record afterwards.
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
     out = vw("set_record", uuid=uuid, record=record, values=values)
     app.get_journal().record(
         out["document"], "vw_set_record",
@@ -238,9 +292,13 @@ def vw_insert_symbol(
     layer: str | None = None,
     class_name: str | None = None,
     rotation: float = 0.0,
+    document: str | None = None,
 ) -> dict:
     """Place a symbol from the document's resources at x, y (document units),
-    optionally at height z, on a layer and in a class. One undo step."""
+    optionally at height z, on a layer and in a class. One undo step.
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
     info = vw(
         "insert_symbol", name=name, x=x, y=y, z=z, layer=layer, cls=class_name,
         rotation=rotation,
@@ -252,14 +310,17 @@ def vw_insert_symbol(
 
 
 @mcp.tool(annotations=WRITE)
-def vw_revert_last() -> dict:
+def vw_revert_last(document: str | None = None) -> dict:
     """Undo exactly the last MCP write in the active document: restores the
     previous field values of vw_set_record / vw_set_lighting_device_fields,
     deletes the symbol vw_insert_symbol placed, or deletes the objects a
     vw_exec_python call created. Call repeatedly to step further back.
     (Vectorworks' own Cmd-Z merges consecutive MCP edits.) A vw_exec_python
     call that created nothing (it only changed existing objects) can't be
-    reverted and blocks stepping further back."""
+    reverted and blocks stepping further back.
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
     journal = app.get_journal()
     document = vw("current_document")
     try:

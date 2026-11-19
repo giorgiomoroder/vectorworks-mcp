@@ -277,4 +277,26 @@ modal dialogs are level 8. `vw_screenshot` now returns these under
 See `architecture.md`: only `run VectorScript` calling
 `DoMenuTextByName('MCP Run Job', 0)` is safe; `run Python script` writes,
 and any script sent during launch or a modal dialog, crash Vectorworks.
-The dictionary has no usable document list (`every document` → `missing value`).
+The dictionary has no usable document list (`every document` → `missing value`),
+but `name of every window` works; see "Switching documents".
+
+## Switching documents (outside Vectorworks, live-tested on VW 2027 32.1, German UI)
+
+There is no vs.* call to list open documents or activate one, and switching
+inside a running script is not safe. Plain AppleScript to the app works
+(Automation permission only):
+
+- `name of every window`: open documents front to back, plus helper windows
+  ("" and "Window"); window 1 is the active document.
+- `documents` / `every VectorworksDocument` return nothing usable, and
+  windows have `document: missing value`, so the file path is not
+  available: remember it from `vs.GetFPathName()` when a document is active.
+- `set index of window "X" to 1` (even after `activate`) reorders windows
+  but does **not** select the document tab; `vs.GetFName()` stays the same.
+- `open POSIX file "<path>"` of an already open document brings it to the
+  front without opening it twice. Unsaved documents can't be reached this way.
+- The app's dictionary: Contents/Resources/Vectorworks.sdef (Cocoa standard
+  suite + open, run VectorScript, run Python script, translate).
+- Probing from inside a job: start osascript detached (`sleep 1; osascript`
+  in a new session) so the Apple Event arrives after the script has ended,
+  and read its output file in the next call.

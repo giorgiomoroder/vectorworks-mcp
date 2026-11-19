@@ -39,12 +39,16 @@ def vw_list_library_resources(
 
 @mcp.tool(annotations=WRITE)
 def vw_import_resource(
-    path: str, name: str, new_name: str | None = None, type_code: int = 16
+    path: str, name: str, new_name: str | None = None, type_code: int = 16,
+    document: str | None = None,
 ) -> dict:
     """Import one resource (symbol or plug-in style) from a library file into
     the document through Vectorworks' own importer, so it can then be placed
     with vw_insert_symbol / vw_create_pio. If the document already has a
-    resource with that name, give new_name to import a copy. Revertible."""
+    resource with that name, give new_name to import a copy. Revertible.
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
     out = vw("import_resource", path=path, name=name, type_code=type_code, new_name=new_name)
     return _journal(out, "vw_import_resource", [{"op": "resource", "name": out["name"]}])
 
@@ -58,6 +62,7 @@ def vw_create_pio(
     parameters: dict[str, Any] | None = None,
     layer: str | None = None,
     class_name: str | None = None,
+    document: str | None = None,
 ) -> dict:
     """Place a Spotlight/Vectorworks plug-in object by its INTERNAL name at x, y
     (document units) with a rotation, and set parameters by field name. Known
@@ -65,7 +70,10 @@ def vw_create_pio(
     document, Name, Type, PositionName), "Lighting Device", "Light Position
     Obj". Use vw_find_objects(type="Plug-in Object") + vw_get_pio_parameters on
     an existing object to learn other names and fields. Unknown parameter
-    names abort the call and nothing is placed. Revertible."""
+    names abort the call and nothing is placed. Revertible.
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
     info = vw("create_pio", plugin=plugin, x=x, y=y, rotation=rotation,
               parameters=parameters, layer=layer)
     out = _journal(info, "vw_create_pio", [{"op": "created", "uuid": info["uuid"]}])
@@ -85,9 +93,12 @@ def vw_get_pio_parameters(uuid: str) -> dict:
 
 
 @mcp.tool(annotations=WRITE)
-def vw_set_pio_parameters(uuid: str, values: dict[str, Any]) -> dict:
+def vw_set_pio_parameters(uuid: str, values: dict[str, Any], document: str | None = None) -> dict:
     """Set parameter fields on a plug-in object by field name and regenerate
-    it. All-or-nothing: an unknown field name changes nothing. Revertible."""
+    it. All-or-nothing: an unknown field name changes nothing. Revertible.
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
     out = vw("set_pio_parameters", uuid=uuid, values=values)
     ops = [{"op": "fields", "uuid": uuid, "record": out["record"], "before": out["before"]}]
     _journal(out, "vw_set_pio_parameters", ops)
@@ -98,27 +109,37 @@ def vw_set_pio_parameters(uuid: str, values: dict[str, Any]) -> dict:
 def vw_create_layer(
     name: str, kind: Literal["design", "sheet"] = "design", scale: float | None = None,
     activate: bool = False,
+    document: str | None = None,
 ) -> dict:
     """Create a design or sheet layer (design layers: optional scale denominator,
     e.g. 48 for 1/4" = 1'). The user's active layer stays active unless
-    activate=True. Revertible (the layer is deleted)."""
+    activate=True. Revertible (the layer is deleted).
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
     out = vw("create_layer", name=name, kind=kind, scale=scale, activate=activate)
     return _journal(out, "vw_create_layer", [{"op": "layer", "name": name}])
 
 
 @mcp.tool(annotations=WRITE)
-def vw_create_class(name: str) -> dict:
+def vw_create_class(name: str, document: str | None = None) -> dict:
     """Create a class (use "-" for hierarchy, e.g. "Lighting-Truss"). The active
-    class is left unchanged. Revertible."""
+    class is left unchanged. Revertible.
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
     out = vw("create_class", name=name)
     return _journal(out, "vw_create_class", [{"op": "class", "name": name}])
 
 
 @mcp.tool(annotations=WRITE)
-def vw_delete_objects(uuids: list[str]) -> dict:
+def vw_delete_objects(uuids: list[str], document: str | None = None) -> dict:
     """Delete objects by uuid. All-or-nothing: if any uuid is unknown nothing is
     deleted. NOT revertible with vw_revert_last (only Cmd-Z in Vectorworks),
-    and it blocks reverting earlier edits, so confirm with the user first."""
+    and it blocks reverting earlier edits, so confirm with the user first.
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
     if not uuids:
         raise ToolError("no uuids given")
     out = vw("delete_objects", uuids=uuids)
@@ -126,9 +147,15 @@ def vw_delete_objects(uuids: list[str]) -> dict:
 
 
 @mcp.tool(annotations=WRITE)
-def vw_move_objects(uuids: list[str], dx: float = 0.0, dy: float = 0.0, dz: float = 0.0) -> dict:
+def vw_move_objects(
+    uuids: list[str], dx: float = 0.0, dy: float = 0.0, dz: float = 0.0,
+    document: str | None = None,
+) -> dict:
     """Move objects by an offset in document units (dz for 3D). All-or-nothing
-    on unknown uuids. Revertible (moved back)."""
+    on unknown uuids. Revertible (moved back).
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
     if not uuids:
         raise ToolError("no uuids given")
     out = vw("move_objects", uuids=uuids, dx=dx, dy=dy, dz=dz)
@@ -160,6 +187,7 @@ def vw_insert_truss_run(
     layer: str | None = None,
     class_name: str | None = None,
     library_path: str | None = None,
+    document: str | None = None,
 ) -> dict:
     """Place a straight run of `count` truss pieces end to end, the way
     Spotlight's Insert Truss tool does: TrussItem objects on the symbol's
@@ -169,7 +197,10 @@ def vw_insert_truss_run(
     Braceworks record. `symbol` must be a truss symbol in the document, or
     give `library_path` (from vw_list_library_files) to import it first.
     All-or-nothing; one vw_revert_last removes the whole run (and the
-    import)."""
+    import).
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
     if count < 1:
         raise ToolError("count must be at least 1")
     out = vw("insert_truss_run", symbol=symbol, x=x, y=y, count=count, rotation=rotation,
@@ -214,6 +245,7 @@ def vw_insert_lighting_devices(
     layer: str | None = None,
     class_name: str | None = None,
     library_path: str | None = None,
+    document: str | None = None,
 ) -> dict:
     """Hang `count` lighting fixtures of a fixture symbol (must be in the
     document, or give `library_path` to import it) from (x, y) along
@@ -224,7 +256,10 @@ def vw_insert_lighting_devices(
     position's height unless z is given), Unit Number from start_unit,
     Channel from `channel`, and Purpose. All-or-nothing; one vw_revert_last
     removes them all. Fields are re-read and anything Spotlight overrode is
-    reported under not_applied."""
+    reported under not_applied.
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
     if count < 1:
         raise ToolError("count must be at least 1")
     out = vw("insert_lighting_devices", symbol=symbol, x=x, y=y, count=count, spacing=spacing,
@@ -279,6 +314,7 @@ def vw_insert_stage_decks(
     position: str | None = None,
     layer: str | None = None,
     class_name: str | None = None,
+    document: str | None = None,
 ) -> dict:
     """Build a platform from Spotlight Stage Deck objects: `columns` x `rows`
     rectangular decks of `width` x `depth` at `height` (all document units),
@@ -287,7 +323,10 @@ def vw_insert_stage_decks(
     rotation 0 the platform fills x..x+width*columns, y..y+depth*rows.
     `structure` is the deck's leg style; `purpose`/`position` fill the deck's
     Spotlight fields. Returns each deck's 3D centre and size. All-or-nothing;
-    one vw_revert_last removes the whole platform."""
+    one vw_revert_last removes the whole platform.
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
     if columns < 1 or rows < 1:
         raise ToolError("columns and rows must be at least 1")
     out = vw("insert_stage_decks", width=width, depth=depth, height=height, x=x, y=y,
@@ -321,6 +360,7 @@ def vw_insert_stage_steps(
     position: str | None = None,
     layer: str | None = None,
     class_name: str | None = None,
+    document: str | None = None,
 ) -> dict:
     """A flight of Spotlight Stage Steps down from a stage edge. (x, y) is the
     top centre of the flight on the edge; at `rotation` 0 the stage is on
@@ -331,7 +371,10 @@ def vw_insert_stage_steps(
     unit with a fixed stringer (6 ft unless `stringer_length` is given), so a
     low flight lies at a shallow pitch; use kind "Simple" for a compact
     flight. Returns the flight's 3D centre and size. One vw_revert_last
-    removes it."""
+    removes it.
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
     out = vw("insert_stage_steps", x=x, y=y, stage_height=stage_height, rotation=rotation,
              tread_width=tread_width, steps=steps, kind=kind, rail_left=rail_left,
              rail_right=rail_right, stringer_length=stringer_length, purpose=purpose,

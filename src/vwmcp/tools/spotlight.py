@@ -83,7 +83,9 @@ def vw_list_lighting_devices(
 
 
 @mcp.tool(annotations=WRITE)
-def vw_set_lighting_device_fields(updates: list[dict[str, Any]]) -> list[dict]:
+def vw_set_lighting_device_fields(
+    updates: list[dict[str, Any]], document: str | None = None
+) -> list[dict]:
     """Bulk-edit Lighting Device fields in one undo step.
 
     `updates` is a list of {selector, "fields": {name: value}} where selector is
@@ -96,7 +98,10 @@ def vw_set_lighting_device_fields(updates: list[dict[str, Any]]) -> list[dict]:
     changes. Revert exactly this call with vw_revert_last. Universe / DMX Address edits are applied via UniverseAddress
     (Spotlight's source of truth). Returns before/after per device as re-read
     from Vectorworks, with `not_applied` listing anything Spotlight overrode.
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first).
     """
+    app.require_document(document)
     for u in updates:
         if not isinstance(u.get("fields"), dict) or not u["fields"]:
             raise ToolError(f"each update needs a non-empty 'fields' object: {u!r}")
