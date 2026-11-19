@@ -323,6 +323,31 @@ but `CreateCustomObjectN("Stage Deck", ...)` is the plan), `Stage Steps`,
   `OpenWidth`, `DraperyWidth`, `Traveler`... Needs a path, so a different
   creation call (`CreateCustomObjectPath`); not started.
 
+## Stage ramp (default object read live on 2027, 2026-11-19)
+
+`CreateCustomObjectN("Stage Ramp", (x, y), rot, False)` works like Stage
+Steps: insertion is the **top centre** at the stage edge, the ramp runs
+toward -y at rotation 0, centred on x. Default object: `Type` Legs (popup
+Legs | Solid | Simple), `BuildMethod` "Ramp Length" (| Pitch Angle | Pitch
+Ratio | Pitch Percent), `Stageheight` 4', `RampLength` 8' (along the
+slope), `Treadwidth` 3', computed `FloorLength` 6.93' (= plan length),
+`PitchAngVar` 30 (`PitchAngCalc` "30°"), `PitchRatioVar` 1.73,
+`PitchPercVar` 57.7, `Extend` 0, `BottomVertical`, `DrawArrow` None | Down,
+`RailLeft`/`RailRight` "True"/"False", `RailHeight` 3', legs `LegDia`
+`LegProfile` `LegSpace` `LegTotal`, the usual Spotlight data block,
+`MasterClass` "Staging". `Get3DCntr` → ((x, y - plan/2), height/2),
+`Get3DInfo` → (plan length 83.1", width 36", height 48") for the default.
+Values read back in feet exponent form like the other stage objects.
+`vw_insert_stage_ramp` (ramp_length or pitch_angle) is built on this and
+has **not** run live yet as a tool.
+
+**Lesson (2026-11-19):** that default ramp was created while Michael had
+switched Vectorworks 2027 to another document (his Visit Bushwick model):
+the object went there, the revert found and deleted it, and a census
+confirmed nothing was left. Every test write now passes `document=` so it
+refuses when another file is in front. Live tests should also start with
+`vw_list_documents`.
+
 ## Open menus block the bridge (live 2026-11-17)
 
 A contextual (right-click) menu left open in Vectorworks stops it from

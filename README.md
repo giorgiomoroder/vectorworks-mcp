@@ -125,6 +125,7 @@ uvx --from git+https://github.com/giorgiomoroder/vectorworks-mcp vwmcp doctor
 | `vw_insert_truss_run` | A straight truss run from a library symbol: pieces end to end at a trim height, linked into a Braceworks system, named position |
 | `vw_list_truss` | Truss inventory: runs grouped by system, pieces in order, total length and weight, broken links flagged |
 | `vw_insert_stage_decks` | Build a platform or riser from Spotlight Stage Deck objects: columns x rows of a deck size at a height, leg style, purpose |
+| `vw_insert_stage_ramp` | A Stage Ramp down from a stage edge, by ramp length or pitch angle, with rails and a down arrow; revertible |
 | `vw_insert_stage_steps` | A flight of Spotlight Stage Steps down from a stage edge: height, step count, rails, purpose |
 | `vw_insert_lighting_devices` | Hang fixtures from a fixture symbol on a position at a spacing, as real Lighting Devices with unit numbers, channels, purpose; verified after insert |
 | `vw_create_pio`, `vw_get_pio_parameters`, `vw_set_pio_parameters` | Place and edit plug-in objects (TrussItem, Lighting Device, positions…) by parameter name |

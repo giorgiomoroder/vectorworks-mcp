@@ -623,3 +623,45 @@ def test_stage_steps_reject_bad_height(doc, fake_vs):
     PIO_FIELDS["Stage Steps"] = STEPS_FIELDS
     with pytest.raises(ToolError, match="stage_height"):
         drawing.vw_insert_stage_steps(0, 0, 0)
+
+
+# ---- stage ramp -----------------------------------------------------------------
+
+RAMP_FIELDS = ["Type", "BuildMethod", "Stageheight", "Treadwidth", "RampLength", "PitchAngVar",
+               "RailLeft", "RailRight", "DrawArrow", "Purpose", "Position"]
+
+
+def test_stage_ramp_by_length_and_by_angle(doc, fake_vs):
+    PIO_FIELDS["Stage Ramp"] = RAMP_FIELDS
+    fake_vs.GetUnits = lambda: (25, 3, 2, 1.0, '"', " sq ft")
+    fake_vs.Get3DCntr = lambda hh: ((doc.objects[hh]["x"], doc.objects[hh]["y"] - 41.6), 24)
+    fake_vs.Get3DInfo = lambda hh: (83.1, 36, 48)
+    out = drawing.vw_insert_stage_ramp(5000, 5000, 48, ramp_length=96, rail_right=True, arrow=True,
+                                       purpose="LOAD-IN")
+    assert out["center"] == [5000, 4958.4, 24] and out["size"] == [36, 83.1, 48]
+    o = [o for o in doc.objects.values() if o["pio"] == "Stage Ramp"][0]
+    f = o["fields"]
+    assert f["BuildMethod"] == "Ramp Length" and f["RampLength"] == "2438.4mm"
+    assert f["Stageheight"] == "1219.2mm" and f["Type"] == "Legs" and f["PitchAngVar"] == ""
+    assert f["RailLeft"] == "False" and f["RailRight"] == "True" and f["DrawArrow"] == "Down"
+    assert f["Purpose"] == "LOAD-IN" and (o["x"], o["y"]) == (5000, 5000)
+    drawing.vw_insert_stage_ramp(0, 0, 24, pitch_angle=15, tread_width=48, kind="Solid")
+    f2 = doc.objects[max(doc.objects)]["fields"]
+    assert f2["BuildMethod"] == "Pitch Angle" and f2["PitchAngVar"] == "15" and f2["RampLength"] == ""
+    assert f2["Treadwidth"] == "1219.2mm" and f2["Type"] == "Solid" and f2["DrawArrow"] == "None"
+    generic.vw_revert_last()
+    generic.vw_revert_last()
+    assert not [o for o in doc.objects.values() if o["pio"] == "Stage Ramp"]
+
+
+def test_stage_ramp_rejects_bad_input(doc, fake_vs):
+    PIO_FIELDS["Stage Ramp"] = RAMP_FIELDS
+    with pytest.raises(ToolError, match="either ramp_length or pitch_angle"):
+        drawing.vw_insert_stage_ramp(0, 0, 24)
+    with pytest.raises(ToolError, match="either ramp_length or pitch_angle"):
+        drawing.vw_insert_stage_ramp(0, 0, 24, ramp_length=60, pitch_angle=10)
+    with pytest.raises(ToolError, match="longer than stage_height"):
+        drawing.vw_insert_stage_ramp(0, 0, 24, ramp_length=20)
+    with pytest.raises(ToolError, match="stage_height"):
+        drawing.vw_insert_stage_ramp(0, 0, 0, ramp_length=20)
+    assert not [o for o in doc.objects.values() if o["pio"] == "Stage Ramp"]

@@ -345,6 +345,48 @@ def vw_insert_stage_decks(
 
 
 @mcp.tool(annotations=WRITE)
+def vw_insert_stage_ramp(
+    x: float,
+    y: float,
+    stage_height: float,
+    rotation: float = 0.0,
+    tread_width: float | None = None,
+    ramp_length: float | None = None,
+    pitch_angle: float | None = None,
+    kind: Literal["Legs", "Solid", "Simple"] = "Legs",
+    rail_left: bool = False,
+    rail_right: bool = False,
+    arrow: bool = False,
+    purpose: str | None = None,
+    position: str | None = None,
+    layer: str | None = None,
+    class_name: str | None = None,
+    document: str | None = None,
+) -> dict:
+    """A Spotlight Stage Ramp down from a stage edge. (x, y) is the top
+    centre of the ramp on the edge; at `rotation` 0 the stage is on the +y
+    side and the ramp descends toward -y (same convention as
+    vw_insert_stage_steps). Give either `ramp_length` (measured along the
+    slope) or `pitch_angle` in degrees; `stage_height`, `tread_width` and
+    `ramp_length` are document units. `arrow` draws the plug-in's "down"
+    arrow in plan. Returns the ramp's 3D centre and size (its plan length is
+    size[1] at rotation 0). One vw_revert_last removes it.
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
+    out = vw("insert_stage_ramp", x=x, y=y, stage_height=stage_height, rotation=rotation,
+             tread_width=tread_width, ramp_length=ramp_length, pitch_angle=pitch_angle, kind=kind,
+             rail_left=rail_left, rail_right=rail_right, arrow=arrow, purpose=purpose,
+             position=position, layer=layer)
+    out = _journal(out, "vw_insert_stage_ramp", [{"op": "created", "uuid": out["uuid"]}])
+    if class_name:  # second job: see vw_create_pio
+        vw("set_objects_class", uuids=[out["uuid"]], cls=class_name)
+        out["class"] = class_name
+    out.update(vw("object_extents", uuids=[out["uuid"]])[0])
+    return out
+
+
+@mcp.tool(annotations=WRITE)
 def vw_insert_stage_steps(
     x: float,
     y: float,

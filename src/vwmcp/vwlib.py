@@ -1141,6 +1141,56 @@ def insert_stage_steps(x, y, stage_height, rotation=0.0, tread_width=None, steps
     return {"document": current_document(), "uuid": h_uuid(h), "steps": steps}
 
 
+RAMP = "Stage Ramp"
+RAMP_TYPES = ["Legs", "Solid", "Simple"]
+
+
+def insert_stage_ramp(x, y, stage_height, rotation=0.0, tread_width=None, ramp_length=None,
+                      pitch_angle=None, kind="Legs", rail_left=False, rail_right=False,
+                      arrow=False, purpose=None, position=None, layer=None):
+    """One Stage Ramp down from a stage edge at (x, y) (top centre of the
+    ramp), descending away from the stage like Stage Steps (rotation 0:
+    stage is +y, ramp goes -y). Give ramp_length (along the slope) or
+    pitch_angle (degrees); dimensions in document units."""
+    if stage_height <= 0:
+        raise ValueError("stage_height must be positive")
+    if kind not in RAMP_TYPES:
+        raise ValueError("kind must be one of %s" % ", ".join(RAMP_TYPES))
+    if (ramp_length is None) == (pitch_angle is None):
+        raise ValueError("give either ramp_length or pitch_angle")
+    if ramp_length is not None and ramp_length <= stage_height:
+        raise ValueError("ramp_length must be longer than stage_height")
+    if pitch_angle is not None and not 0 < pitch_angle < 90:
+        raise ValueError("pitch_angle must be between 0 and 90 degrees")
+    if layer:
+        _activate_layer(layer)
+    params = {"Type": kind, "Stageheight": "%gmm" % _doc_to_mm(stage_height),
+              "RailLeft": "True" if rail_left else "False",
+              "RailRight": "True" if rail_right else "False",
+              "DrawArrow": "Down" if arrow else "None"}
+    if ramp_length is not None:
+        params["BuildMethod"] = "Ramp Length"
+        params["RampLength"] = "%gmm" % _doc_to_mm(ramp_length)
+    else:
+        params["BuildMethod"] = "Pitch Angle"
+        params["PitchAngVar"] = "%g" % pitch_angle
+    if tread_width:
+        params["Treadwidth"] = "%gmm" % _doc_to_mm(tread_width)
+    if purpose:
+        params["Purpose"] = purpose
+    if position:
+        params["Position"] = position
+    h = vs.CreateCustomObjectN(RAMP, (x, y), rotation, False)
+    if _is_nil(h):
+        raise RuntimeError("Stage Ramp plug-in did not create an object")
+    try:
+        _write_fields(h, RAMP, params)  # class: see create_pio, applied in a 2nd job
+    except Exception:
+        vs.DelObject(h)
+        raise
+    return {"document": current_document(), "uuid": h_uuid(h)}
+
+
 # ---- geometry export (read-back) -----------------------------------------------
 
 def _pt(p, nd):

@@ -82,13 +82,16 @@ before changing anything that touches Vectorworks.
   hangs from palette/timer contexts. Always go through `vwlib._activate_layer`.
 - Vectorworks merges consecutive scripted runs of MCP Run Job into one Cmd-Z.
   Per-call undo is `vw_revert_last` (journal). Don't promise Cmd-Z granularity.
-- Test writes on throwaway documents only; ask the user which files are safe.
+- Test writes on throwaway documents only; ask the user which files are safe,
+  and pass `document=` on every test write: Michael switches documents
+  while Claude works (2026-11-19: a test ramp landed in his Visit Bushwick
+  model; reverted). Start a live session with `vw_list_documents`.
 
 ## Development
 
 ```bash
 uv sync
-uv run pytest -q          # 166 tests; fake executor runs the real bridge code
+uv run pytest -q          # 168 tests; fake executor runs the real bridge code
 uv run vwmcp              # stdio server
 uv build                  # wheel must contain vwmcp/_plugin/vwmcp_bridge.py
 ```
@@ -133,9 +136,13 @@ on a throwaway doc and record findings in `docs/vs-notes.md`:
       in mm strings, leg style, purpose, class in a 2nd job, extents read
       back in a follow-up job (vs-notes "Stage decks"). `vw_insert_stage_steps`
       (live 2026-11-17): a flight from a stage edge, height/steps/rails/
-      stringer length. Still to do: `Stage Ramp`, soft goods (`Soft Goods` is
-      a path plug-in), rails on the outer edges of a platform, round decks,
-      a one-call "platform with steps" composite.
+      stringer length. `vw_insert_stage_ramp` (2026-11-19, built from the
+      default object read live on 2027; not yet run live as a tool). Still
+      to do: soft goods (`Soft Goods` is a path plug-in: `GdsFunct` Curtain |
+      Truss Border | Pipe-and-Drape, `CurtHeight`, `OpenFrom`, `OpenWidth`,
+      `Traveler`, pipe-and-drape hardware fields; needs
+      `CreateCustomObjectPath` with a path, live), rails on the outer edges
+      of a platform, round decks, a one-call "platform with steps" composite.
 - [ ] **Band members and instruments.** Blocked on content (2026-11-17): no
       people or backline library is on this Mac (`Libraries/Visualization/People`
       is a placeholder, no backline folder, and `Libraries/defaultContent.db`,
