@@ -64,17 +64,12 @@ fi
 
 cat <<'MSG'
 
-Almost done. One-time step inside Vectorworks (about 2 minutes):
+Almost done. One-time step inside Vectorworks (about 1 minute).
+The "MCP Run Job" command file is installed; Vectorworks loads it at
+startup, so quit and reopen Vectorworks if it was running just now. Then:
 
-  1. Tools > Plug-ins > Plug-in Manager...  > Custom Plug-ins > New...
-     Type: Command   Name: MCP Run Job
-  2. Select it > Edit Script...  > Language: Python, paste these two lines:
-
-         from vwmcp import vwmcp_bridge
-         vwmcp_bridge.run_pending()
-
-  3. Tools > Workspaces > Edit Current Workspace... > Menus tab:
-     drag "MCP Run Job" (under Miscellaneous) into any menu, e.g. Tools.
+  Tools > Workspaces > Edit Current Workspace... > Menus tab:
+  drag "MCP Run Job" (under Miscellaneous) into any menu, e.g. Tools.
 
 Then quit and reopen Claude Desktop. The first time Claude talks to
 Vectorworks, macOS asks to allow control of Vectorworks: click Allow.

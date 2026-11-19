@@ -53,32 +53,37 @@ curl -LsSf https://raw.githubusercontent.com/giorgiomoroder/vectorworks-mcp/main
 ```
 
 It installs [uv](https://docs.astral.sh/uv/) if needed, copies the small
-bridge script into your Vectorworks Plug-ins folder
-(`~/Library/Application Support/Vectorworks/2026/Plug-ins/vwmcp/`), and adds
-Vectorworks to Claude Desktop and Claude Code. Your existing Claude Desktop
+bridge script and the "MCP Run Job" menu command into your Vectorworks
+Plug-ins folder (`~/Library/Application Support/Vectorworks/2026/Plug-ins/`),
+and adds Vectorworks to Claude Desktop and Claude Code. Your existing Claude Desktop
 settings are kept (a backup is saved next to them).
 
-### 2. Create the "MCP Run Job" menu command in Vectorworks (once, 2 minutes)
+### 2. Put "MCP Run Job" in a menu (once, 1 minute)
 
-Claude reaches into Vectorworks through one menu command. Vectorworks only
-allows plug-ins like this to be made in its Plug-in Manager:
+Claude reaches into Vectorworks through one menu command. The installer
+already placed the command file; Vectorworks loads it at startup, so if
+Vectorworks was running during the install, quit and reopen it. Then:
 
-1. **Tools ▸ Plug-ins ▸ Plug-in Manager…** ▸ **Custom Plug-ins** tab ▸ **New…**
-2. Choose **Command**, name it exactly **`MCP Run Job`**, click **OK**.
-3. With it selected, click **Edit Script…**, set **Language: Python**, and paste:
-
-   ```python
-   from vwmcp import vwmcp_bridge
-   vwmcp_bridge.run_pending()
-   ```
-
-   Click **OK**, then **Close**.
-4. **Tools ▸ Workspaces ▸ Edit Current Workspace…** ▸ **Menus** tab. Find
+1. **Tools ▸ Workspaces ▸ Edit Current Workspace…** ▸ **Menus** tab. Find
    **MCP Run Job** in the left list (under *Miscellaneous*) and drag it into
    any menu on the right, e.g. **Tools**. Click **OK**.
 
 Test it: choose **Tools ▸ MCP Run Job**. Nothing visible happens, and no
 error appears. That's correct; there's no work queued yet.
+
+<details>
+<summary>Prefer to make the command yourself?</summary>
+
+**Tools ▸ Plug-ins ▸ Plug-in Manager…** ▸ **Custom Plug-ins** ▸ **New…**,
+type **Command**, name it exactly `MCP Run Job`, then **Edit Script…**,
+**Language: Python**, and paste:
+
+```python
+from vwmcp import vwmcp_bridge
+vwmcp_bridge.run_pending()
+```
+
+</details>
 
 ### 3. Restart Claude and say hello (1 minute)
 

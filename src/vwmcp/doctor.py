@@ -67,6 +67,12 @@ def check_bridge(home: Path, vw_version: str, platform: str, root: Path | None =
                 f"{found} at {folder} runs jobs from {bridge_root}, but this server uses {expected}",
                 f"vwmcp install-plugin --vw-version {vw_version} --home {expected}",
             )
+    menu = folder.parent / install.MENU_COMMAND_FILE
+    if not menu.exists():
+        return Check(
+            "bridge", False, f"{found} at {folder}, but no '{install.MENU_COMMAND_FILE}' in {folder.parent}",
+            f"vwmcp install-plugin --vw-version {vw_version}" + (f" --home {serves}" if serves else ""),
+        )
     return Check("bridge", True, f"{found} at {folder}" + (f", jobs from {serves}" if serves else ""))
 
 
@@ -216,7 +222,7 @@ def format_report(checks: list[Check]) -> str:
         elif c.fix:
             lines.append(f"       {c.fix}")
     lines.append(
-        "Not checked here: the 'MCP Run Job' menu command and the macOS Automation "
+        "Not checked here: whether 'MCP Run Job' is in a menu, and the macOS Automation "
         "permission. Ask Claude to ping Vectorworks to test those."
     )
     return "\n".join(lines)

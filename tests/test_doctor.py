@@ -128,3 +128,14 @@ def test_config_entry_is_matched_by_version(tmp_path):
     assert "'vectorworks-2027'" in run(home, tmp_path / "x", vw_version="2027")["claude_code"].detail
     assert "'vectorworks'" in run(home, home / ".vwmcp")["claude_code"].detail
     assert doctor.find_server(both["mcpServers"], "2025") is None
+
+
+def test_bridge_check_wants_the_menu_command_file(tmp_path):
+    from vwmcp import doctor, install
+    home = tmp_path
+    folder = install.plugin_dir("2026", platform="darwin", home=home)
+    install.install_plugin(folder)
+    assert doctor.check_bridge(home, "2026", "darwin").ok
+    (folder.parent / install.MENU_COMMAND_FILE).unlink()
+    c = doctor.check_bridge(home, "2026", "darwin")
+    assert c.ok is False and "MCP Run Job.vsm" in c.detail and "install-plugin" in c.fix

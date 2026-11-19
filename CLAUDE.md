@@ -32,6 +32,10 @@ before changing anything that touches Vectorworks.
   layers/classes, move/delete, view; live-tested the same day (vs-notes
   "Drawing tools").
 - `src/vwmcp/library.py`: finds library `.vwx` files on disk (app + user folders).
+- `src/vwmcp/menu/MCP Run Job.vsm`: the menu command itself (made once in
+  Michael's 2026 Plug-in Manager; a copy loads in 2026 and 2027).
+  `install-plugin` places it in Plug-ins unless one is there; only the
+  workspace drag stays manual. Idea from the PO4 fork.
 - `src/vwmcp/install.py` + `server.py`: `vwmcp` (stdio server), `vwmcp install-plugin`,
   `vwmcp doctor [--fix]` (`doctor.py`: bridge version, Claude configs, VW process,
   stale job/result files, log summary; never touches Vectorworks).
@@ -82,7 +86,7 @@ before changing anything that touches Vectorworks.
 
 ```bash
 uv sync
-uv run pytest -q          # 158 tests; fake executor runs the real bridge code
+uv run pytest -q          # 161 tests; fake executor runs the real bridge code
 uv run vwmcp              # stdio server
 uv build                  # wheel must contain vwmcp/_plugin/vwmcp_bridge.py
 ```

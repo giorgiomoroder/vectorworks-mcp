@@ -47,3 +47,20 @@ def test_plugin_dir_default_version_follows_env(monkeypatch, tmp_path):
         monkeypatch.delenv("VWMCP_VW_VERSION")
         importlib.reload(config)
     assert config.DEFAULT_APP == "Vectorworks 2026"
+
+
+def test_install_places_the_bundled_menu_command_once(tmp_path):
+    target = tmp_path / "Plug-ins" / "vwmcp"
+    msg = install.install_plugin(target)
+    vsm = tmp_path / "Plug-ins" / install.MENU_COMMAND_FILE
+    assert vsm.read_bytes() == install.bundled_menu_command().read_bytes()
+    assert "Installed the 'MCP Run Job' menu command" in msg and "Edit Current Workspace" in msg
+    vsm.write_bytes(b"user's own")
+    msg = install.install_plugin(target)
+    assert vsm.read_bytes() == b"user's own" and "already present" in msg
+
+
+def test_install_without_a_menu_file_prints_the_script(tmp_path, monkeypatch):
+    monkeypatch.setattr(install, "bundled_menu_command", lambda: None)
+    msg = install.install_plugin(tmp_path / "vwmcp")
+    assert install.MENU_SCRIPT in msg and not (tmp_path / install.MENU_COMMAND_FILE).exists()
