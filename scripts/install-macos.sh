@@ -2,7 +2,7 @@
 # vectorworks-mcp installer for macOS.
 #   curl -LsSf https://raw.githubusercontent.com/giorgiomoroder/vectorworks-mcp/main/scripts/install-macos.sh | bash
 # Options (environment variables):
-#   VW_VERSION=2026          Vectorworks version folder to install into
+#   VW_VERSION=2026          Vectorworks version to install for (default: newest installed)
 #   VWMCP_SOURCE=<spec>      where to get the server (default: GitHub main)
 #   SERVER_NAME=<name>       Claude server name (default: vectorworks, or
 #                            vectorworks-<version> for a non-2026 version)
@@ -11,7 +11,11 @@
 #   VW_VERSION=2027 bash install-macos.sh
 set -euo pipefail
 
-VW_VERSION="${VW_VERSION:-2026}"
+if [ -z "${VW_VERSION:-}" ]; then
+  # newest installed Vectorworks, else 2026
+  VW_VERSION="$(ls -d /Applications/Vectorworks\ 20[0-9][0-9] 2>/dev/null | sed 's/.* //' | sort | tail -1)"
+  VW_VERSION="${VW_VERSION:-2026}"
+fi
 SOURCE="${VWMCP_SOURCE:-git+https://github.com/giorgiomoroder/vectorworks-mcp}"
 if [ "$VW_VERSION" = "2026" ]; then
   SERVER_NAME="${SERVER_NAME:-vectorworks}"

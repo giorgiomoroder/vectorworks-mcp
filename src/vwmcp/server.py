@@ -11,6 +11,9 @@ from vwmcp import config, install
 from vwmcp.app import mcp
 from vwmcp.tools import drawing, generic, spotlight  # noqa: F401  (registers tools)
 
+for _name in config.tools_off():
+    mcp.remove_tool(_name)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="vwmcp", description=__doc__)

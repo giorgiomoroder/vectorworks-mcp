@@ -26,6 +26,8 @@ def setup_home(tmp_path, bridge_version=None, desktop=True, code=True):
 def run(home, root, **kw):
     kw.setdefault("uptime", lambda: 600)
     kw.setdefault("platform", "darwin")
+    kw.setdefault("apps", home / "Applications")  # no Vectorworks installed: no version complaint
+    kw.setdefault("environ", {})
     return {c.name: c for c in doctor.run_checks(home=home, root=root, **kw)}
 
 
@@ -139,3 +141,15 @@ def test_bridge_check_wants_the_menu_command_file(tmp_path):
     (folder.parent / install.MENU_COMMAND_FILE).unlink()
     c = doctor.check_bridge(home, "2026", "darwin")
     assert c.ok is False and "MCP Run Job.vsm" in c.detail and "install-plugin" in c.fix
+
+
+def test_version_choice_check(tmp_path):
+    from vwmcp import doctor
+    root = tmp_path / "Applications"
+    for y in ("2026", "2027"):
+        (root / f"Vectorworks {y}" / f"Vectorworks {y}.app").mkdir(parents=True)
+    c = doctor.check_version_choice("2026", environ={}, apps=root)
+    assert c.ok is False and "2026, 2027" in c.detail and "VWMCP_VW_VERSION" in c.fix
+    assert doctor.check_version_choice("2027", environ={"VWMCP_VW_VERSION": "2027"}, apps=root).ok
+    assert doctor.check_version_choice("2026", environ={}, apps=root, configured={"2026", "2027"}).ok
+    assert doctor.check_version_choice("2025", environ={"VWMCP_VW_VERSION": "2025"}, apps=root).ok is None

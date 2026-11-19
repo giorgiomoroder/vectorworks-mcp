@@ -42,6 +42,40 @@ def claude_desktop_config(home: Path, platform: str = sys.platform) -> Path:
     return home / "Library/Application Support/Claude/claude_desktop_config.json"
 
 
+def _configured_versions(home: Path, platform: str) -> set[str]:
+    """VWMCP_VW_VERSION values set on server entries in the Claude configs."""
+    out = set()
+    for path in (claude_desktop_config(home, platform), home / ".claude.json"):
+        try:
+            servers = json.loads(path.read_text(encoding="utf-8")).get("mcpServers", {})
+        except (OSError, ValueError):
+            continue
+        for entry in servers.values():
+            v = ((entry or {}).get("env") or {}).get("VWMCP_VW_VERSION")
+            if v:
+                out.add(v)
+    return out
+
+
+def check_version_choice(
+    vw_version: str, environ=os.environ, apps: Path = Path("/Applications"), configured: set[str] = frozenset()
+) -> Check:
+    """With several Vectorworks versions installed, the version must be explicit:
+    in this process' env or on a server entry in the Claude configs."""
+    found = config.installed_versions(apps)
+    explicit = environ.get("VWMCP_VW_VERSION") or environ.get("VWMCP_APP") or vw_version in configured
+    if len(found) > 1 and not explicit:
+        return Check(
+            "version", False,
+            f"Vectorworks {', '.join(found)} are installed and nothing says which one this server is for "
+            f"(assuming {vw_version})",
+            "set VWMCP_VW_VERSION in the server's env (the installer does: VW_VERSION=2027 bash install-macos.sh)",
+        )
+    if vw_version not in found and found:
+        return Check("version", None, f"Vectorworks {vw_version} is not in /Applications (installed: {', '.join(found)})")
+    return Check("version", True, f"Vectorworks {vw_version}" + (" (only version installed)" if len(found) == 1 else ""))
+
+
 def check_bridge(home: Path, vw_version: str, platform: str, root: Path | None = None) -> Check:
     try:
         appdata = Path(os.environ.get("APPDATA", home / "AppData/Roaming"))
@@ -189,6 +223,8 @@ def run_checks(
     uptime: Callable[[], float | None] | None = None,
     now: float | None = None,
     fix: bool = False,
+    apps: Path = Path("/Applications"),
+    environ=os.environ,
 ) -> list[Check]:
     home = home or Path.home()
     now = time.time() if now is None else now
@@ -204,6 +240,7 @@ def run_checks(
         else:
             uptime = lambda: None  # noqa: E731
     return [
+        check_version_choice(vw_version, environ, apps, _configured_versions(home, platform)),
         check_bridge(home, vw_version, platform, root),
         check_claude_desktop(home, platform, vw_version),
         check_claude_code(home, vw_version),

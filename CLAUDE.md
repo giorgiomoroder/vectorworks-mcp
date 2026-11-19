@@ -14,8 +14,10 @@ before changing anything that touches Vectorworks.
   user-created **MCP Run Job** menu command (`from vwmcp import vwmcp_bridge;
   vwmcp_bridge.run_pending()`). Bump `BRIDGE_VERSION` and
   `app.EXPECTED_BRIDGE_VERSION` together whenever the job/result format changes.
-- `src/vwmcp/config.py`: `VWMCP_VW_VERSION` (default 2026) → app name, Plug-ins
-  and Libraries folders. One server per Vectorworks version; a second version
+- `src/vwmcp/config.py`: `VWMCP_VW_VERSION` (else the year in `VWMCP_APP`, else
+  the single installed version, else 2026) → app name, Plug-ins and Libraries
+  folders; `TOOL_GROUPS` + `VWMCP_TOOLS_OFF` hide spotlight/stage/plan tools
+  (server.py removes them after import). One server per Vectorworks version; a second version
   gets its own server, `VWMCP_HOME` and bridge (`install-plugin --home`, which
   writes `vwmcp_home.txt` beside the bridge). See docs/claude-config.md.
 - `src/vwmcp/client.py`: job folder protocol (`~/.vwmcp/jobs`, `results`), timeout + withdrawal, log.
@@ -86,7 +88,7 @@ before changing anything that touches Vectorworks.
 
 ```bash
 uv sync
-uv run pytest -q          # 161 tests; fake executor runs the real bridge code
+uv run pytest -q          # 166 tests; fake executor runs the real bridge code
 uv run vwmcp              # stdio server
 uv build                  # wheel must contain vwmcp/_plugin/vwmcp_bridge.py
 ```
@@ -175,7 +177,7 @@ Beta hardening:
 Distribution:
 - [ ] PyPI release (`vwmcp`; check the name is free), then MCP registry
       (`server.json` + `mcp-name` comment in README are ready).
-- [ ] CI (GitHub Actions: `uv run pytest` on macOS + Linux).
+- [x] CI (2026-11-19): `.github/workflows/tests.yml`, pytest + lint + build on macOS and Linux.
 - [ ] Stretch from the original brief: ConnectCAD signal/cable tools,
       Vision/MVR export, GDTF fixture mapping.
 

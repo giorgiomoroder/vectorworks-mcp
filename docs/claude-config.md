@@ -58,7 +58,8 @@ Set these in the server's `env` block if you need them:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `VWMCP_VW_VERSION` | `2026` | Vectorworks version: app name, user Plug-ins and Libraries folders |
+| `VWMCP_TOOLS_OFF` | (none) | Hide tool groups, comma-separated: `spotlight` (lighting devices, positions, paperwork), `stage` (truss, decks, steps), `plan` (geometry export, render, duplicate layer, vertices). For users who never need them; keeps Claude's tool list short. Example: `spotlight,stage` |
+| `VWMCP_VW_VERSION` | the single installed version, else `2026` | Vectorworks version: app name, user Plug-ins and Libraries folders. Set it explicitly when several versions are installed (`vwmcp doctor` checks) |
 | `VWMCP_APP` | `Vectorworks <version>` | Application name AppleScript talks to (override only if yours is renamed) |
 | `VWMCP_HOME` | `~/.vwmcp` | Job, result, journal and log folder |
 | `VWMCP_TIMEOUT` | `30` | Seconds to wait for Vectorworks per request |
