@@ -42,6 +42,8 @@ before changing anything that touches Vectorworks.
   `app.require_document` first (new write tools should too).
 - `src/vwmcp/render.py`: `vw_render_layers`, draws exported geometry to a PNG
   (pure Python, no Screen Recording needed).
+- `src/vwmcp/vslint.py` + `data/vs_api_<year>.json`: pre-flight lint of Python
+  sent to Vectorworks (`vw_lint`, `vwmcp lint`, `vwmcp dump-api`).
 - `src/vwmcp/screenshot.py`: `vw_screenshot`. CoreGraphics window list via ctypes +
   `screencapture -l <id>` + `sips`. No Apple Event, so it works while a dialog blocks.
 - `scripts/install-macos.sh`: one-line installer (uv, bridge, Claude Desktop + Code config).
@@ -61,8 +63,12 @@ before changing anything that touches Vectorworks.
 - A wrong `vs.*` signature shows a modal **Script Errors** dialog instead of
   raising; the user must click OK before anything else runs. An open
   right-click menu blocks jobs the same way; `vw_screenshot` lists what is
-  in front (`in_front`) without touching the app. Check signatures
-  with `vw_vs_lookup` (live docstrings) first.
+  in front (`in_front`) without touching the app. `vslint.py` (from the
+  PO4 fork, bgst84) checks syntax, vs.* argument counts and deprecated
+  calls before `vw_exec_python` / `vw_exec_file` send anything (also
+  `vw_lint`, `vwmcp lint FILE`); the table is `data/vs_api_<year>.json`,
+  refreshed with `vwmcp dump-api` from a running Vectorworks. Argument
+  *types* are not checked, so still check signatures with `vw_vs_lookup`.
 - `vs.GetBBox` is projected in 3D views; use `vwlib._extent3d` (`Get3DCntr` /
   `Get3DInfo`) for geometry that must not depend on the user's current view.
 - `vs.Layer(name)` is the only layer-activation call in VW 2026 (no
@@ -76,7 +82,7 @@ before changing anything that touches Vectorworks.
 
 ```bash
 uv sync
-uv run pytest -q          # 146 tests; fake executor runs the real bridge code
+uv run pytest -q          # 158 tests; fake executor runs the real bridge code
 uv run vwmcp              # stdio server
 uv build                  # wheel must contain vwmcp/_plugin/vwmcp_bridge.py
 ```

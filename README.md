@@ -133,6 +133,7 @@ uvx --from git+https://github.com/giorgiomoroder/vectorworks-mcp vwmcp doctor
 | `vw_revert_last` | Undo exactly the last Claude edit in this drawing (repeatable), including objects a `vw_exec_python` call created |
 | `vw_exec_python` | Run any Vectorworks Python (`vs.*`) and get stdout, value, traceback; records created objects for revert; optional timeout |
 | `vw_exec_file` | Same as `vw_exec_python`, for a script file on the Mac |
+| `vw_lint` | Check Python for Vectorworks without running it: syntax, wrong `vs.*` argument counts, deprecated calls (the things that open the blocking "Script Errors" dialog). `vw_exec_python` runs this check first |
 | `vw_screenshot` | The document window as an image (plus window geometry and any dialog or open menu in front); works even while a dialog blocks the bridge |
 | `vw_vs_lookup` | Search the `vs.*` API of *your* Vectorworks, with signatures |
 

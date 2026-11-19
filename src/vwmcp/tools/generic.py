@@ -10,7 +10,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.mcpserver.utilities.types import Image
 from mcp.types import TextContent
 
-from vwmcp import app, calls, documents, render, screenshot
+from vwmcp import app, calls, config, documents, render, screenshot, vslint
 from vwmcp.app import READ, WRITE, mcp, vw
 from vwmcp.client import BridgeError
 from vwmcp.journal import JournalError
@@ -80,7 +80,7 @@ def vw_ping() -> dict:
 @mcp.tool(annotations=WRITE)
 def vw_exec_python(
     code: str, modifies_document: bool = True, timeout: float | None = None,
-    document: str | None = None,
+    document: str | None = None, lint: bool = True,
 ) -> dict:
     """Run arbitrary Python inside Vectorworks with `vs` in scope.
 
@@ -100,8 +100,32 @@ def vw_exec_python(
 
     document: optional guard; if given and another document is active,
     nothing changes (use vw_switch_document first).
+    lint (default True): the code is checked before it is sent (vw_lint).
+    Syntax errors, vs.* calls with a wrong number of arguments and
+    deprecated calls stop the call with a report instead of opening the
+    blocking Script Errors dialog; unknown vs.* names come back as
+    `lint_warnings`. lint=False skips the check (only if the check is wrong).
     """
     app.require_document(document)
+    lint_warnings = _preflight(code, "<vw_exec_python>") if lint else []
+    out = _exec_python(code, modifies_document, timeout)
+    if lint_warnings:
+        out["lint_warnings"] = lint_warnings
+    return out
+
+
+def _preflight(code: str, filename: str) -> list[str]:
+    """Lint code; raise ToolError on errors, return warning lines."""
+    report = vslint.lint(code, filename, year=config.VW_VERSION)
+    if report["errors"]:
+        raise ToolError(
+            "Not sent to Vectorworks: this would likely open the blocking Script Errors dialog.\n"
+            + vslint.format_report(report, filename)
+            + "\nFix the code (check signatures with vw_vs_lookup), or pass lint=False if the check is wrong.")
+    return [f"line {w['line']}: {w['message']}" for w in report["warnings"]]
+
+
+def _exec_python(code: str, modifies_document: bool, timeout: float | None) -> dict:
     if not modifies_document:
         res = _run_raw(code, timeout)
         return {k: res.get(k) for k in ("ok", "value", "stdout", "error", "traceback")}
@@ -138,12 +162,12 @@ def vw_exec_python(
 @mcp.tool(annotations=WRITE)
 def vw_exec_file(
     path: str, modifies_document: bool = True, timeout: float | None = 120,
-    document: str | None = None,
+    document: str | None = None, lint: bool = True,
 ) -> dict:
     """Run a Python script file (a path on this Mac, e.g. in the project's
     _claude_scripts folder) inside Vectorworks, exactly like vw_exec_python
-    with its contents: created objects are revertible. Default timeout 120 s
-    for large scripts.
+    with its contents: created objects are revertible, the file is linted
+    first. Default timeout 120 s for large scripts.
     document: optional guard; if given and another document is active,
     nothing changes (use vw_switch_document first)."""
     app.require_document(document)
@@ -152,7 +176,34 @@ def vw_exec_file(
         code = p.read_text(encoding="utf-8")
     except OSError as e:
         raise ToolError(f"Can't read {p}: {e}") from e
-    return vw_exec_python(code, modifies_document=modifies_document, timeout=timeout)
+    lint_warnings = _preflight(code, p.name) if lint else []
+    out = _exec_python(code, modifies_document, timeout)
+    if lint_warnings:
+        out["lint_warnings"] = lint_warnings
+    return out
+
+
+@mcp.tool(annotations=READ)
+def vw_lint(code: str | None = None, path: str | None = None) -> dict:
+    """Check Python for Vectorworks without running it: syntax errors, vs.*
+    calls with a wrong number of arguments, deprecated calls (these would open
+    the blocking "Script Errors" dialog) and unknown vs.* names. Pass code or
+    the path of a script file (e.g. a menu command script). Works without
+    Vectorworks. Argument types are not checked."""
+    if (code is None) == (path is None):
+        raise ToolError("Pass either code or path.")
+    name = "<code>"
+    if path is not None:
+        p = Path(path).expanduser()
+        try:
+            code = p.read_text(encoding="utf-8")
+        except OSError as e:
+            raise ToolError(f"Can't read {p}: {e}") from e
+        name = str(p)
+    report = vslint.lint(code, name, year=config.VW_VERSION)
+    report["ok"] = not report["errors"]
+    report["api"] = vslint.load_api(config.VW_VERSION).get("vectorworks")
+    return report
 
 
 def _remember_active() -> None:
