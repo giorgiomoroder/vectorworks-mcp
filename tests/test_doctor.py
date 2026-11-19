@@ -114,3 +114,17 @@ def test_bridge_home_file_must_match_server_root(tmp_path):
     c = run(home, root)["bridge"]
     assert c.ok is True and f"jobs from {root}" in c.detail
     assert run(home, home / ".vwmcp")["bridge"].ok is False
+
+
+def test_config_entry_is_matched_by_version(tmp_path):
+    home = setup_home(tmp_path, bridge_version=app.EXPECTED_BRIDGE_VERSION)
+    assert run(home, home / ".vwmcp")["claude_code"].ok is True
+    c = run(home, tmp_path / "x", vw_version="2027")["claude_code"]
+    assert c.ok is False and "no server for Vectorworks 2027" in c.detail and "vectorworks-2027" in c.fix
+    both = {"mcpServers": {
+        "vectorworks": {"command": "/bin/sh", "args": ["x"]},
+        "vectorworks-2027": {"command": "/bin/sh", "args": ["x"], "env": {"VWMCP_VW_VERSION": "2027"}}}}
+    (home / ".claude.json").write_text(json.dumps(both))
+    assert "'vectorworks-2027'" in run(home, tmp_path / "x", vw_version="2027")["claude_code"].detail
+    assert "'vectorworks'" in run(home, home / ".vwmcp")["claude_code"].detail
+    assert doctor.find_server(both["mcpServers"], "2025") is None

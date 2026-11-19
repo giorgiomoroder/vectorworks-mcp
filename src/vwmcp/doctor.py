@@ -70,35 +70,53 @@ def check_bridge(home: Path, vw_version: str, platform: str, root: Path | None =
     return Check("bridge", True, f"{found} at {folder}" + (f", jobs from {serves}" if serves else ""))
 
 
-def _server_entry(path: Path) -> tuple[bool | None, str]:
-    """(ok, detail) for a Claude config file's mcpServers.vectorworks entry."""
+def find_server(servers: dict, vw_version: str) -> tuple[str, dict] | None:
+    """The mcpServers entry for this Vectorworks version: one whose env sets
+    VWMCP_VW_VERSION to it, else (for the default version) the entry named
+    'vectorworks' without a version in its env."""
+    for name, entry in servers.items():
+        env = (entry or {}).get("env") or {}
+        if env.get("VWMCP_VW_VERSION") == vw_version:
+            return name, entry
+    entry = servers.get("vectorworks")
+    if entry and vw_version == "2026" and not (entry.get("env") or {}).get("VWMCP_VW_VERSION"):
+        return "vectorworks", entry
+    return None
+
+
+def _server_entry(path: Path, vw_version: str) -> tuple[bool | None, str]:
+    """(ok, detail) for the Claude config file's server entry for vw_version."""
     if not path.exists():
         return None, f"no config at {path}"
     try:
         cfg = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as e:
         return False, f"cannot read {path}: {e}"
-    entry = (cfg.get("mcpServers") or {}).get("vectorworks")
-    if not entry:
-        return False, f"no 'vectorworks' server in {path}"
+    found = find_server(cfg.get("mcpServers") or {}, vw_version)
+    if not found:
+        return False, f"no server for Vectorworks {vw_version} in {path}"
+    name, entry = found
     command = entry.get("command", "")
     if command and not Path(command).is_absolute():
-        return True, f"command {command!r} (not an absolute path; Claude Desktop needs one)"
+        return True, f"'{name}': command {command!r} (not an absolute path; Claude Desktop needs one)"
     if command and not Path(command).exists():
-        return False, f"command {command!r} does not exist"
-    return True, f"{command} {' '.join(entry.get('args', []))}".strip()
+        return False, f"'{name}': command {command!r} does not exist"
+    return True, f"'{name}': {command} {' '.join(entry.get('args', []))}".strip()
 
 
-def check_claude_desktop(home: Path, platform: str) -> Check:
-    ok, detail = _server_entry(claude_desktop_config(home, platform))
+def check_claude_desktop(home: Path, platform: str, vw_version: str = config.VW_VERSION) -> Check:
+    ok, detail = _server_entry(claude_desktop_config(home, platform), vw_version)
     return Check("claude_desktop", ok, detail, "" if ok else "Re-run the installer or see docs/claude-config.md")
 
 
-def check_claude_code(home: Path) -> Check:
-    ok, detail = _server_entry(home / ".claude.json")
+def check_claude_code(home: Path, vw_version: str = config.VW_VERSION) -> Check:
+    ok, detail = _server_entry(home / ".claude.json", vw_version)
     if ok is None:
         detail = "Claude Code not set up (no ~/.claude.json)"
-    return Check("claude_code", ok, detail, "" if ok else "claude mcp add --scope user vectorworks -- uvx --from git+https://github.com/giorgiomoroder/vectorworks-mcp vwmcp")
+    name = "vectorworks" if vw_version == "2026" else f"vectorworks-{vw_version}"
+    return Check("claude_code", ok, detail, "" if ok else
+                 f"VW_VERSION={vw_version} bash scripts/install-macos.sh, or: claude mcp add --scope user "
+                 f"{name} -e VWMCP_VW_VERSION={vw_version} -- uvx --from git+https://github.com/giorgiomoroder/vectorworks-mcp vwmcp")
 
 
 def check_vectorworks(uptime: float | None, app_name: str, platform: str) -> Check:
@@ -181,8 +199,8 @@ def run_checks(
             uptime = lambda: None  # noqa: E731
     return [
         check_bridge(home, vw_version, platform, root),
-        check_claude_desktop(home, platform),
-        check_claude_code(home),
+        check_claude_desktop(home, platform, vw_version),
+        check_claude_code(home, vw_version),
         check_vectorworks(uptime(), app_name, platform),
         check_runtime(Path(root), now, fix),
         check_log(Path(root), now),
