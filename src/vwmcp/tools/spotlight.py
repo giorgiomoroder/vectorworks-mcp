@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
 
-from vwmcp import app, mvr
+from vwmcp import app, hookup, mvr
 from vwmcp.app import READ, WRITE, mcp, vw
 
 REPORT_FIELDS = [
@@ -175,4 +175,47 @@ def vw_mvr_check(position: str | None = None) -> dict:
         "File > Export > Export MVR in Vectorworks."
         if not out["ok"] else "No blocking issues: File > Export > Export MVR in Vectorworks."
     )
+    return out
+
+
+@mcp.tool(annotations=WRITE)
+def vw_import_hookup(
+    path: str,
+    key: Literal["channel", "unit_number", "position+unit_number"] = "channel",
+    column_map: dict[str, str] | None = None,
+    dry_run: bool = True,
+    document: str | None = None,
+) -> dict:
+    """Import a channel hookup / instrument schedule from a spreadsheet export
+    (.csv or .tsv, first row = headers) into the Lighting Devices. Each row is
+    matched to one device by `key`: its Channel, its Unit Number, or Position +
+    Unit Number (unit numbers repeat per position). The other columns are
+    written as Lighting Device fields when their header is a field name
+    (case-insensitive; Address/Addr/DMX mean UniverseAddress, Unit means Unit
+    Number, Inst/Type mean Inst Type, Gel means Color); `column_map` overrides
+    that, e.g. {"What": "Purpose"}. Unknown headers are ignored and listed.
+    Empty cells are not written. With dry_run (default) nothing changes: you get
+    the planned updates, ignored columns and skipped rows to show the user.
+    With dry_run=False and `document` set, the updates go through
+    vw_set_lighting_device_fields: all-or-nothing (a row that matches no device
+    or several stops everything), one revertible step, with `not_applied` for
+    anything Spotlight overrode. """ + app.DOCUMENT_HINT
+    try:
+        rows = hookup.read_table(path)
+    except (OSError, ValueError) as e:
+        raise ToolError(str(e)) from e
+    known = vw("ld_field_names")
+    try:
+        plan = hookup.plan_updates(rows, key=key, known_fields=known, column_map=column_map)
+    except ValueError as e:
+        raise ToolError(str(e)) from e
+    out = {"dry_run": dry_run, "rows": len(rows), **plan}
+    if dry_run:
+        out["next_step"] = "Show this plan to the user; run again with dry_run=False and document=... to apply."
+        return out
+    if not document:
+        raise ToolError("Applying needs document=<name of the plot> so the hookup cannot land in another open file.")
+    if not plan["updates"]:
+        raise ToolError("Nothing to apply: every row was skipped (empty key or no values).")
+    out["result"] = vw_set_lighting_device_fields(plan["updates"], document=document)
     return out

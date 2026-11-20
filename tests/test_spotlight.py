@@ -1,6 +1,9 @@
 import csv
 import io
 
+import pytest
+from mcp.server.mcpserver.exceptions import ToolError
+
 from vwmcp.tools import spotlight
 
 
@@ -76,3 +79,48 @@ def test_mvr_check_position_filter(monkeypatch):
     out = spotlight.vw_mvr_check(position="FOH")
     assert out["device_count"] == 1
     assert out["ok"] is True
+
+
+# ---- vw_import_hookup ---------------------------------------------------------
+
+def test_import_hookup_dry_run_plans_without_writing(tmp_path, monkeypatch):
+    sheet = tmp_path / "h.csv"
+    sheet.write_text("Channel,Purpose,Notes\n1,Key,hi\n", encoding="utf-8")
+    calls = []
+
+    def fake_vw(fn, **kw):
+        calls.append(fn)
+        assert fn == "ld_field_names"
+        return ["Channel", "Purpose", "Color"]
+
+    monkeypatch.setattr(spotlight, "vw", fake_vw)
+    out = spotlight.vw_import_hookup(str(sheet))
+    assert calls == ["ld_field_names"]
+    assert out["dry_run"] is True
+    assert out["updates"] == [{"channel": "1", "fields": {"Purpose": "Key"}}]
+    assert out["ignored"] == ["Notes"]
+
+
+def test_import_hookup_apply_needs_document(tmp_path, monkeypatch):
+    sheet = tmp_path / "h.csv"
+    sheet.write_text("Channel,Purpose\n1,Key\n", encoding="utf-8")
+    monkeypatch.setattr(spotlight, "vw", lambda fn, **kw: ["Channel", "Purpose"])
+    with pytest.raises(ToolError, match="document"):
+        spotlight.vw_import_hookup(str(sheet), dry_run=False)
+
+
+def test_import_hookup_apply_delegates_to_set_fields(tmp_path, monkeypatch):
+    sheet = tmp_path / "h.csv"
+    sheet.write_text("Channel,Purpose\n1,Key\n", encoding="utf-8")
+    monkeypatch.setattr(spotlight, "vw", lambda fn, **kw: ["Channel", "Purpose"])
+    seen = {}
+
+    def fake_set(updates, document=None):
+        seen["updates"], seen["document"] = updates, document
+        return [{"uuid": "u", "after": {"Purpose": "Key"}}]
+
+    monkeypatch.setattr(spotlight, "vw_set_lighting_device_fields", fake_set)
+    out = spotlight.vw_import_hookup(str(sheet), dry_run=False, document="Plot")
+    assert seen == {"updates": [{"channel": "1", "fields": {"Purpose": "Key"}}], "document": "Plot"}
+    assert out["result"] == [{"uuid": "u", "after": {"Purpose": "Key"}}]
+    assert out["dry_run"] is False

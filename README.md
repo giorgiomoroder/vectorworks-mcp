@@ -121,6 +121,7 @@ uvx --from git+https://github.com/giorgiomoroder/vectorworks-mcp vwmcp doctor
 | `vw_list_positions` | Positions with their devices, plus unassigned devices and orphan position names |
 | `vw_lighting_device_report` | Paperwork export (CSV or JSON), naturally sorted |
 | `vw_mvr_check` | MVR export pre-flight: devices without GDTF fixture or mode, missing or duplicate Fixture IDs, unpatched or overlapping DMX addresses, loose positions, 2D-only symbols. Read-only; the export itself stays in the File menu |
+| `vw_import_hookup` | Channel hookup from a spreadsheet export (.csv/.tsv): rows matched by channel or position + unit, columns written as device fields; dry run first, then one revertible step |
 | `vw_list_library_files`, `vw_list_library_resources` | Browse the Vectorworks and user libraries on disk (lighting, truss, people, stage decks) and list the symbols inside a file |
 | `vw_import_resource` | Import one symbol or plug-in style from a library file into the document |
 | `vw_insert_truss_run` | A straight truss run from a library symbol: pieces end to end at a trim height, linked into a Braceworks system, named position |
