@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
 
-from vwmcp import app, classes, library
+from vwmcp import app, classes, library, platform
 from vwmcp.app import READ, WRITE, mcp, vw
 
 
@@ -418,6 +418,63 @@ def vw_insert_stage_decks(
     # Geometry exists only after the creating job ends: read it back now.
     for d, ext in zip(out["decks"], vw("object_extents", uuids=uuids)):
         d.update(ext)
+    return out
+
+
+@mcp.tool(annotations=WRITE)
+def vw_insert_platform(
+    width: float,
+    depth: float,
+    height: float,
+    x: float,
+    y: float,
+    columns: int = 1,
+    rows: int = 1,
+    rotation: float = 0.0,
+    steps_on: Literal["front", "back", "left", "right"] | None = None,
+    step_count: int | None = None,
+    tread_width: float | None = None,
+    step_kind: Literal["Self-Adjusting", "Frame Free-Standing", "Solid Free-Standing", "Open Free-Standing", "Simple"] = "Self-Adjusting",
+    rails: bool = False,
+    structure: Literal["Legs-Basic", "Legs-Braced", "Folding", "Deck Only", "Border", "Simple"] = "Legs-Basic",
+    purpose: str | None = None,
+    position: str | None = None,
+    layer: str | None = None,
+    class_name: str | None = None,
+    document: str | None = None,
+) -> dict:
+    """A platform with its steps in one call: `columns` x `rows` Stage Decks of
+    `width` x `depth` at `height` from corner (x, y) (as vw_insert_stage_decks),
+    plus one flight of Stage Steps centred on the chosen edge, descending away
+    from the platform. Edges are in the platform's own frame: "front" is the
+    edge through (x, y) along `rotation`, "back" opposite, "left" the edge
+    through (x, y) across, "right" opposite. `step_count` defaults to about one
+    per 8 inches; `rails` puts a rail on both sides; `step_kind` "Simple" gives
+    a compact flight. All document units. Everything is one revertible step;
+    the result has each deck's and the flight's 3D centre and size.
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
+    if columns < 1 or rows < 1:
+        raise ToolError("columns and rows must be at least 1")
+    steps = None
+    if steps_on:
+        sx, sy, srot = platform.step_origin(x, y, width, depth, columns, rows, rotation, steps_on)
+        steps = {"x": sx, "y": sy, "rotation": srot, "steps": step_count, "tread_width": tread_width,
+                 "kind": step_kind, "rail_left": rails, "rail_right": rails}
+    out = vw("insert_platform", width=width, depth=depth, height=height, x=x, y=y, columns=columns,
+             rows=rows, rotation=rotation, structure=structure, purpose=purpose, position=position,
+             layer=layer, steps=steps)
+    uuids = [d["uuid"] for d in out["decks"]] + ([out["steps"]["uuid"]] if out.get("steps") else [])
+    out = _journal(out, "vw_insert_platform", [{"op": "created", "uuid": u} for u in uuids])
+    if class_name:  # second job: see vw_create_pio
+        vw("set_objects_class", uuids=uuids, cls=class_name)
+        out["class"] = class_name
+    extents = {e["uuid"]: e for e in vw("object_extents", uuids=uuids)}
+    for d in out["decks"]:
+        d.update(extents.get(d["uuid"], {}))
+    if out.get("steps"):
+        out["steps"].update(extents.get(out["steps"]["uuid"], {}))
     return out
 
 

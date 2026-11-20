@@ -1317,6 +1317,33 @@ def insert_stage_steps(x, y, stage_height, rotation=0.0, tread_width=None, steps
     return {"document": current_document(), "uuid": h_uuid(h), "steps": steps}
 
 
+def insert_platform(width, depth, height, x, y, columns=1, rows=1, rotation=0.0,
+                    structure="Legs-Basic", purpose=None, position=None, layer=None, steps=None):
+    """Decks (insert_stage_decks) plus, if `steps` is given, one flight of
+    Stage Steps at steps["x"], steps["y"], steps["rotation"] (the server
+    computes the edge midpoint) with the other insert_stage_steps keys.
+    All-or-nothing: a failing flight removes the decks again."""
+    decks = insert_stage_decks(width, depth, height, x, y, columns=columns, rows=rows,
+                               rotation=rotation, structure=structure, purpose=purpose,
+                               position=position, layer=layer)
+    flight = None
+    if steps:
+        try:
+            flight = insert_stage_steps(steps["x"], steps["y"], height, rotation=steps["rotation"],
+                                        tread_width=steps.get("tread_width"), steps=steps.get("steps"),
+                                        kind=steps.get("kind", "Self-Adjusting"),
+                                        rail_left=steps.get("rail_left", False),
+                                        rail_right=steps.get("rail_right", False),
+                                        purpose=purpose, position=position, layer=layer)
+        except Exception:
+            for d in decks["decks"]:
+                vs.DelObject(handle(d["uuid"]))
+            raise
+        flight.pop("document", None)
+    return {"document": decks["document"], "decks": decks["decks"], "footprint": decks["footprint"],
+            "steps": flight}
+
+
 RAMP = "Stage Ramp"
 RAMP_TYPES = ["Legs", "Solid", "Simple"]
 

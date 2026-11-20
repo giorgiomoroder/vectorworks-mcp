@@ -138,6 +138,7 @@ Vectorworks restart. Claude Code users keep using the installer script.
 | `vw_insert_truss_run` | A straight truss run from a library symbol: pieces end to end at a trim height, linked into a Braceworks system, named position |
 | `vw_list_truss` | Truss inventory: runs grouped by system, pieces in order, total length and weight, broken links flagged |
 | `vw_insert_stage_decks` | Build a platform or riser from Spotlight Stage Deck objects: columns x rows of a deck size at a height, leg style, purpose |
+| `vw_insert_platform` | Platform and steps in one call: decks plus a flight of Stage Steps centred on a chosen edge, rails, class; one revertible step |
 | `vw_insert_stage_ramp` | A Stage Ramp down from a stage edge, by ramp length or pitch angle, with rails and a down arrow; revertible |
 | `vw_insert_stage_steps` | A flight of Spotlight Stage Steps down from a stage edge: height, step count, rails, purpose |
 | `vw_insert_soft_goods` | A Soft Goods run (curtain, truss border, pipe-and-drape) along a polyline: height, opening, traveler, pipe/track; revertible (not yet run live) |

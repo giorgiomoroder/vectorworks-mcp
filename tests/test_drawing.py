@@ -787,3 +787,47 @@ def test_create_sheet_needs_layers_and_positive_scale(fake):
         drawing.vw_create_sheet("S", layers=[])
     with pytest.raises(ToolError, match="scale"):
         drawing.vw_create_sheet("S", layers=["L"], scale=0)
+
+
+# ---- vw_insert_platform -----------------------------------------------------------
+
+def test_insert_platform_journals_decks_and_steps_together(fake, monkeypatch):
+    seen = {}
+
+    def fake_vw(fn, **kw):
+        if fn == "insert_platform":
+            seen.update(kw)
+            return {"document": "Plot.vwx", "decks": [{"uuid": "d1"}, {"uuid": "d2"}],
+                    "steps": {"uuid": "s1", "steps": 3}, "footprint": {"width": 8, "depth": 8}}
+        if fn == "object_extents":
+            return [{"uuid": u, "center": [0, 0, 0], "size": [1, 1, 1]} for u in kw["uuids"]]
+        return fake(fn, **kw)
+
+    for mod in (app, generic, drawing):
+        monkeypatch.setattr(mod, "vw", fake_vw)
+    out = drawing.vw_insert_platform(4, 8, 2, 10, 20, columns=2, steps_on="front", step_count=3,
+                                     rails=True, class_name="Stage-Decks")
+    assert seen["steps"] == {"x": 10 + 4.0, "y": 20.0, "rotation": 0.0, "steps": 3, "tread_width": None,
+                             "kind": "Self-Adjusting", "rail_left": True, "rail_right": True}
+    assert seen["width"] == 4 and seen["columns"] == 2
+    assert out["steps"]["uuid"] == "s1" and out["class"] == "Stage-Decks"
+    assert ("set_objects_class", {"uuids": ["d1", "d2", "s1"], "cls": "Stage-Decks"}) in fake.calls
+    generic.vw_revert_last()
+    assert last_revert_ops(fake) == [{"op": "created", "uuid": "d1"}, {"op": "created", "uuid": "d2"},
+                                     {"op": "created", "uuid": "s1"}]
+
+
+def test_insert_platform_without_steps(fake, monkeypatch):
+    def fake_vw(fn, **kw):
+        if fn == "insert_platform":
+            assert kw["steps"] is None
+            return {"document": "Plot.vwx", "decks": [{"uuid": "d1"}], "steps": None,
+                    "footprint": {"width": 4, "depth": 8}}
+        if fn == "object_extents":
+            return [{"uuid": u} for u in kw["uuids"]]
+        return fake(fn, **kw)
+
+    for mod in (app, generic, drawing):
+        monkeypatch.setattr(mod, "vw", fake_vw)
+    out = drawing.vw_insert_platform(4, 8, 2, 0, 0)
+    assert out["steps"] is None and len(out["decks"]) == 1
