@@ -250,3 +250,60 @@ def test_missing_tables_mean_no_checking(root, typed_vs, monkeypatch, tmp_path):
 
 def test_bridge_version_is_0_2_0():
     assert bridge.BRIDGE_VERSION == "0.2.0"
+
+
+# ------------------------------------------------- document guard, libraries
+
+
+def test_document_guard_refuses_another_document_before_running(root, fake_vs):
+    fake_vs.GetFPathName = lambda: "/Users/m/Plot.vwx"
+    write_job(root, "d1", "vs.calls.append('ran')", document={"name": "visit-bushwick v2027"})
+    bridge.run_pending(root, vs_module=fake_vs)
+    res = read_result(root, "d1")
+    assert res["ok"] is False and res["never_ran"] is True
+    assert res["error"].startswith("WrongDocument:")
+    assert "Plot.vwx" in res["error"] and fake_vs.calls == []
+
+
+def test_document_guard_matches_case_and_extension_insensitively(root, fake_vs):
+    fake_vs.GetFPathName = lambda: "/Users/m/Plot.vwx"
+    write_job(root, "d2", "vs.calls.append('ran')", document={"name": "plot"})
+    bridge.run_pending(root, vs_module=fake_vs)
+    assert read_result(root, "d2")["ok"] is True and fake_vs.calls == ["ran"]
+
+
+def test_document_guard_prefers_the_path_when_both_sides_have_one(root, fake_vs):
+    fake_vs.GetFPathName = lambda: "/Users/m/shows/Plot.vwx"
+    write_job(root, "d3", "1", document={"name": "Plot", "path": "/Users/m/other/Plot.vwx"})
+    bridge.run_pending(root, vs_module=fake_vs)
+    assert read_result(root, "d3")["never_ran"] is True
+
+
+def test_helper_library_is_compiled_once_per_session(root, fake_vs, tmp_path):
+    src = "def helper():\n    return 'lib'\n"
+    sha = bridge.hashlib.sha256(src.encode("utf-8")).hexdigest()
+    lib = tmp_path / f"{sha}.py"
+    lib.write_text(src)
+    ref = {"name": "vwlib", "sha": sha, "path": str(lib)}
+    bridge._CACHE["libs"].clear()
+    write_job(root, "l1", "helper()", libs=[ref])
+    bridge.run_pending(root, vs_module=fake_vs)
+    assert read_result(root, "l1")["value"] == "lib"
+    lib.unlink()  # cached: the file is not needed any more this session
+    write_job(root, "l2", "helper()", libs=[ref])
+    bridge.run_pending(root, vs_module=fake_vs)
+    assert read_result(root, "l2")["value"] == "lib"
+
+
+def test_helper_library_with_wrong_checksum_is_refused(root, fake_vs, tmp_path):
+    lib = tmp_path / "x.py"
+    lib.write_text("def helper(): return 1\n")
+    write_job(root, "l3", "helper()", libs=[{"name": "vwlib", "sha": "0" * 64, "path": str(lib)}])
+    bridge.run_pending(root, vs_module=fake_vs)
+    assert "checksum" in read_result(root, "l3")["error"]
+
+
+def test_result_carries_claimed_at(root, fake_vs):
+    write_job(root, "t1", "1")
+    bridge.run_pending(root, vs_module=fake_vs)
+    assert read_result(root, "t1")["claimed_at"] > 0

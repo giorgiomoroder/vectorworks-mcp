@@ -25,6 +25,7 @@ bump BRIDGE_VERSION whenever the job/result format changes.
 
 import ast
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -272,10 +273,34 @@ def load_tables(vs_module, here=None):
 # ----------------------------------------------------------------- running
 
 
-def _execute(code, vs_module):
-    """Run code; return the value: the last expression unless the code
-    assigns `result`."""
+def _compiled_lib(lib):
+    """Compiled code of a helper library {"name", "sha", "path"} (or "src"),
+    cached by sha for the whole Vectorworks session (the imported bridge
+    module lives as long as the app)."""
+    sha = lib.get("sha")
+    code = _CACHE["libs"].get(sha) if sha else None
+    if code is not None:
+        return code
+    src = lib.get("src")
+    if src is None:
+        with open(lib["path"], encoding="utf-8") as f:
+            src = f.read()
+    if sha and hashlib.sha256(src.encode("utf-8")).hexdigest() != sha:
+        raise RuntimeError("helper library %s does not match its checksum" % lib.get("path"))
+    code = compile(src, "<%s>" % lib.get("name", "lib"), "exec")
+    if sha:
+        if len(_CACHE["libs"]) > 16:
+            _CACHE["libs"].clear()
+        _CACHE["libs"][sha] = code
+    return code
+
+
+def _execute(code, vs_module, libs=()):
+    """Run code after the helper libraries; return the value: the last
+    expression unless the code assigns `result`."""
     scope = {"vs": vs_module, "__name__": "__vwmcp__"}
+    for lib in libs:
+        exec(_compiled_lib(lib), scope)
     tree = ast.parse(code, "<vwmcp job>", "exec")
     last_expr = None
     if tree.body and isinstance(tree.body[-1], ast.Expr):
@@ -309,8 +334,46 @@ def _claim_oldest(jobs_dir):
     return None
 
 
+def _doc_key(name):
+    import unicodedata
+    s = unicodedata.normalize("NFC", name or "").strip()
+    if s.lower().endswith(".vwx"):
+        s = s[:-4]
+    return s.casefold()
+
+
+def _wrong_document(vs_module, want):
+    """Error text if the active document is not `want` ({"name", "path"}),
+    else None. The path decides when both sides have one; else the name
+    (case, .vwx and Unicode form do not matter). Checked right before the
+    job runs, because the user may switch documents between two jobs."""
+    try:
+        name = str(vs_module.GetFName() or "")
+    except Exception:  # noqa: BLE001
+        name = ""
+    try:
+        path = str(vs_module.GetFPathName() or "") if hasattr(vs_module, "GetFPathName") else ""
+    except Exception:  # noqa: BLE001
+        path = ""
+    want_path, want_name = want.get("path") or "", want.get("name") or ""
+    if want_path and path and _doc_key(path) != _doc_key(name):
+        ok = _doc_key(path) == _doc_key(want_path)
+    else:
+        ok = _doc_key(name) == _doc_key(want_name or os.path.basename(want_path))
+    if ok:
+        return None
+    return "WrongDocument: the active document is %r, not %r; nothing was run" % (
+        name or path, want_name or want_path)
+
+
 def _run_job(job, res, out, vs_module):
     """Execute one loaded job into `res` (the checked vs, stdout captured)."""
+    want = job.get("document")
+    problem = _wrong_document(vs_module, want) if want else None
+    if problem:
+        res["error"] = problem
+        res["never_ran"] = True
+        return
     run_vs, proxy, saved_vs = vs_module, None, None
     if job.get("check", True):
         try:
@@ -324,7 +387,7 @@ def _run_job(job, res, out, vs_module):
         sys.modules["vs"] = proxy  # `import vs` inside the job gets the proxy too
     try:
         with contextlib.redirect_stdout(out):
-            value = _execute(job["code"], run_vs)
+            value = _execute(job["code"], run_vs, job.get("libs") or ())
     finally:
         if proxy is not None:
             if saved_vs is None:
