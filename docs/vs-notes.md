@@ -52,6 +52,27 @@ menu command gets a fresh Python state (module globals don't persist).
 - `LDevice_GetParamStr(h, 0, name)` is the wrong signature (Script Errors,
   returns `""`). Real signature unknown.
 
+## Live findings 2026-11-20 (VW 2026 31.7, blank doc, while 2027 ran alongside)
+
+- Two versions open at once work: the 2026 server's jobs ran in 2026 only.
+- `vs.ModelPt2DToScreenPt((x, y))` returns the point **unchanged** in Top/Plan
+  from the menu command: it is a model/screen-plane conversion, not pixels.
+  `GetProjection(ActLayer())` = 6 in Top/Plan; `GetZoom()` 115.38 (percent),
+  `GetScreen()` = (0, 0, 1728, 1117). Pixel mapping needs another route
+  (calibrate with an object at known coordinates).
+- Class attributes: `SetClPenFore(name, RGBToColorIndex(r, g, b))` with
+  0-65535 components works (`RGBToColorIndex(65535, 0, 0)` = index 1256 on
+  this doc; it adds palette entries). In Python `GetClPenFore(name)` and
+  `GetClFillFore(name)` return an **(r, g, b) tuple**, not an index.
+  `SetClFPat(name, 1)` + fill colour, `SetClLW(name, mils)` read back as set.
+  `vw_apply_class_standard` created 18 classes with the right line weights
+  and colours (first read-back looked white because the reader converted
+  the tuple as an index).
+- Feeding that tuple to `ColorIndexToRGB` opened the **"A Script error has
+  occurred" alert**: a 324x130 window titled "Vectorworks" at window level 0
+  (not a modal level), which blocked the next job for good. `vw_screenshot`
+  now reports it as `in_front` (`screenshot.is_script_error_alert`).
+
 ## MVR pre-flight (not run live, 2026-11-20)
 
 - `vwlib.mvr_data` reads the MVR-relevant Lighting Device fields that exist in

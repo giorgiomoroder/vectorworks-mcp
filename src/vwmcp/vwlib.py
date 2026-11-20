@@ -544,8 +544,14 @@ def create_class(name):
     return {"document": current_document(), "name": name}
 
 
-def _rgb255(index):
-    r, g, b = vs.ColorIndexToRGB(index)
+def _rgb255(color):
+    """0-255 RGB from what the class colour getters return. Live 2026-11-20
+    (VW 2026): GetClPenFore / GetClFillFore return an (r, g, b) tuple with
+    0-65535 components in Python, not a colour index; an index is converted."""
+    if isinstance(color, (tuple, list)):
+        r, g, b = color
+    else:
+        r, g, b = vs.ColorIndexToRGB(color)
     return [int(round(v / 257.0)) for v in (r, g, b)]
 
 
@@ -556,7 +562,7 @@ def _color_index(rgb):
 def class_attrs(names):
     """Pen/fill colour (RGB 0-255), fill pattern, line weight (mils) and
     use-graphic flag of classes, keyed by name; {"exists": False} for unknown
-    ones. Not run live yet (2026-11-20): GetClFPat 0 is taken as 'no fill'."""
+    ones. Live 2026-11-20 on VW 2026: GetClFPat 0 means 'no fill'."""
     have = set(list_classes())
     out = {}
     for n in names:

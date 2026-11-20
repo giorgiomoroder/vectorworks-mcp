@@ -88,3 +88,13 @@ def test_screenshot_reports_menus_and_dialogs_in_front(tmp_path):
     _, _, in_front = ss.screenshot(root=tmp_path, windows=lambda o: windows, run=FakeRun())
     assert [(w["id"], w["kind"]) for w in in_front] == [
         (43, "popup/contextual menu"), (44, "modal dialog")]
+
+
+def test_script_error_alert_is_reported_even_at_normal_window_level():
+    # Live 2026-11-20: the "A Script error has occurred" alert is a 324x130
+    # window titled "Vectorworks" at level 0, next to the document windows.
+    alert = ss.Window(id=9, title="Vectorworks", layer=0, x=702, y=251, width=324, height=130)
+    doc = win(2, "Untitled 1", w=1728, h=978)
+    (found,) = ss.blocking_windows([doc, alert])
+    assert found["id"] == 9 and found["kind"] == "alert (Script error: click OK in Vectorworks)"
+    assert ss.pick_window([doc, alert]) == doc

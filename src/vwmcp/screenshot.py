@@ -56,17 +56,27 @@ def blocking_windows(windows: list[Window]) -> list[dict]:
     jobs, with a label for the level so the caller can say which it is."""
     out = []
     for w in windows:
-        if w.layer == 0:
+        if w.layer == 0 and not is_script_error_alert(w):
             continue
         d = w.as_dict()
-        d["kind"] = WINDOW_LEVELS.get(w.layer, "other (level %d)" % w.layer)
+        if w.layer == 0:
+            d["kind"] = "alert (Script error: click OK in Vectorworks)"
+        else:
+            d["kind"] = WINDOW_LEVELS.get(w.layer, "other (level %d)" % w.layer)
         out.append(d)
     return out
 
 
+def is_script_error_alert(w: Window) -> bool:
+    """The "A Script error has occurred" alert (live 2026-11-20, VW 2026): a
+    small window titled just "Vectorworks" at the normal window level, so the
+    level alone does not reveal it. It blocks jobs until the user clicks OK."""
+    return w.title.strip() == "Vectorworks" and w.height < 300 and w.width < 700
+
+
 def pick_window(windows: list[Window], title: str | None = None) -> Window:
     """The document window: normal layer, matching title if given, else the largest."""
-    normal = [w for w in windows if w.layer == 0]
+    normal = [w for w in windows if w.layer == 0 and not is_script_error_alert(w)]
     if title:
         needle = title.lower()
         normal = [w for w in normal if needle in w.title.lower()]
