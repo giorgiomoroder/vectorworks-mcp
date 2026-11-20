@@ -199,7 +199,9 @@ def vw_import_hookup(
     With dry_run=False and `document` set, the updates go through
     vw_set_lighting_device_fields: all-or-nothing (a row that matches no device
     or several stops everything), one revertible step, with `not_applied` for
-    anything Spotlight overrode. """ + app.DOCUMENT_HINT
+    anything Spotlight overrode. document: name of the document this call is
+    meant for; if another document is active nothing changes (use
+    vw_switch_document first)."""
     try:
         rows = hookup.read_table(path)
     except (OSError, ValueError) as e:

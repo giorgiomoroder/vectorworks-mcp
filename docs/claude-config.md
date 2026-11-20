@@ -88,3 +88,15 @@ server has its own journal, so `vw_revert_last` can't cross over. In Claude,
 tools appear twice, prefixed by server name; say which version you mean.
 `vwmcp doctor` checks one server at a time: run it with that server's
 environment (`VWMCP_VW_VERSION=2027 VWMCP_HOME=~/.vwmcp-2027 vwmcp doctor`).
+
+## Claude Desktop extension bundle (.mcpb)
+
+`scripts/build-mcpb.py` writes `dist/vectorworks-mcp-<version>.mcpb`: a zip
+with `manifest.json` (MCP Bundle spec 0.4, server type `uv`), the server
+source, the bridge, `pyproject.toml` and `uv.lock`. Claude Desktop runs
+`uv run --directory <bundle> mcpb_main.py`, so the user needs neither Python
+nor a config edit; `user_config.vw_version` becomes `VWMCP_VW_VERSION` and
+`VWMCP_HOME` is `~/.vwmcp`. The tools list in the manifest is generated from
+the registered tools. `--validate` runs the official schema check
+(`npx -y @anthropic-ai/mcpb validate`). The bridge is not part of the bundle
+install: `vw_doctor(fix=True)` puts it into the Vectorworks Plug-ins folder.

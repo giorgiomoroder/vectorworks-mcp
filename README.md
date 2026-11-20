@@ -105,6 +105,17 @@ uvx --from git+https://github.com/giorgiomoroder/vectorworks-mcp vwmcp doctor
 
 ---
 
+### Alternative: Claude Desktop extension (one file)
+
+Download `vectorworks-mcp-<version>.mcpb` from the
+[releases](https://github.com/giorgiomoroder/vectorworks-mcp/releases) (or
+build it: `uv run python scripts/build-mcpb.py`), double-click it, and
+Claude Desktop installs the server with its own Python (via `uv`). Set the
+Vectorworks version when asked. Then say "check the Vectorworks MCP setup":
+`vw_doctor(fix=True)` installs the bridge into your Plug-ins folder, and the
+only manual step left is step 2 above (drag "MCP Run Job" into a menu) plus a
+Vectorworks restart. Claude Code users keep using the installer script.
+
 ## Tools
 
 | Tool | What it does |
