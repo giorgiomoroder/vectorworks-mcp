@@ -14,7 +14,7 @@ from vwmcp import calls, config
 from vwmcp.client import Bridge, BridgeError
 from vwmcp.journal import Journal
 
-EXPECTED_BRIDGE_VERSION = "0.1.0"
+EXPECTED_BRIDGE_VERSION = "0.2.0"  # bridge 0.2: checked vs, document guard, libs by sha
 # Vectorworks major versions this release was tested against (31 = 2026).
 TESTED_VW_MAJORS = {31: "2026", 32: "2027"}  # 2027: 32.1.1, live 2026-11-19 (vs-notes)
 

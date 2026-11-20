@@ -111,3 +111,142 @@ def test_root_comes_from_home_file_beside_the_bridge(tmp_path, fake_vs, monkeypa
     assert read_result(other, "h1")["value"] == "from 2027"
     (tmp_path / "vwmcp_home.txt").write_text("~/.vwmcp-x\n")
     assert bridge.configured_root().endswith("/.vwmcp-x") and "~" not in bridge.configured_root()
+
+
+# ---------------------------------------------------------------- checked vs
+
+import types
+
+import pytest
+
+
+def _fn(doc, impl=None):
+    f = impl or (lambda *a: ("called", a))
+    f.__doc__ = doc
+    return f
+
+
+@pytest.fixture
+def typed_vs():
+    """A fake vs whose functions carry Vectorworks-style docstrings, so that
+    load_tables keeps them (the live parameter count must match the table)."""
+    vs = types.ModuleType("vs")
+    vs.GetFName = _fn("Definition:\n  vs.GetFName()", lambda: "Plot.vwx")
+    vs.Rect = _fn("Definition:\n  vs.Rect(p1, p2)")
+    vs.SetRField = _fn("Definition:\n  vs.SetRField(h, record, field, value)")
+    vs.ColorIndexToRGB = _fn("Definition:\n  vs.ColorIndexToRGB(color)")
+    vs.ForEachObject = _fn("Definition:\n  vs.ForEachObject(callback, c)")
+    vs.UprString = _fn("Definition:\n  vs.UprString(str)")
+    vs.EditProperties = _fn("Definition:\n  vs.EditProperties(h)")
+    vs.HMove = _fn("Definition:\n  vs.HMove(h, xOffset, yOffset)")
+    vs.calls = []
+    return vs
+
+
+@pytest.fixture
+def tables(tmp_path, monkeypatch):
+    types_json = {"f": {
+        "Rect": {"t": "PP", "a": "p1:POINT, p2:POINT"},
+        "SetRField": {"t": "HSSS", "a": "h:HANDLE, record:STRING, field:STRING, value:STRING"},
+        "ColorIndexToRGB": {"t": "I", "a": "color:INTEGER"},
+        "ForEachObject": {"t": "FS", "a": "callback:PROCEDURE, c:CRITERIA"},
+        "HMove": {"t": "HRR", "a": "h:HANDLE, xOffset:REAL, yOffset:REAL"},
+        "GetFName": {"t": "", "a": ""}}}
+    safety = {"crash": ["UprString"], "hang": [], "document_level": [], "interactive": ["EditProperties"],
+              "arg_check": {}}
+    (tmp_path / "vs_types.json").write_text(json.dumps(types_json))
+    (tmp_path / "vs_safety.json").write_text(json.dumps(safety))
+    monkeypatch.setattr(bridge, "_HERE", str(tmp_path))
+    bridge._CACHE["tables"] = None
+    return tmp_path
+
+
+def test_check_args_accepts_point_as_tuple_or_two_numbers():
+    assert bridge.check_args("PP", ((0, 0), (10, 5))) is None
+    assert bridge.check_args("PP", (0, 0, 10, 5)) is None
+    assert bridge.check_args("PP", ((0, 0, 1), (1, 1))) is None  # 3-tuples pass (3D points)
+    assert "parameter 2 (POINT) needs a tuple or 2 numbers" in bridge.check_args("PP", ((0, 0),))
+    assert "too few" in bridge.check_args("HRR", (None, 1))
+    assert "too many" in bridge.check_args("PP", ((0, 0), (1, 1), (2, 2)))
+
+
+def test_check_args_catches_wrong_types():
+    assert "got text" in bridge.check_args("HRR", ("not a handle", 1, 2))
+    assert "got text" in bridge.check_args("I", ("7",))
+    assert "one tuple" in bridge.check_args("C", (1, 2, 3))
+    assert bridge.check_args("C", ((1, 2, 3),)) is None
+    assert bridge.check_args("I", ((1, 2),)) is not None  # a tuple for one integer
+    assert "callable" in bridge.check_args("FS", ("x", "T=1"))
+
+
+def test_proxy_refuses_bad_call_before_vectorworks_sees_it(root, typed_vs, tables):
+    write_job(root, "c1", "vs.ColorIndexToRGB((1000, 2000, 3000))")
+    bridge.run_pending(root, vs_module=typed_vs)
+    res = read_result(root, "c1")
+    assert res["ok"] is False
+    assert "VSArgumentError" in res["error"]
+    assert "vs.ColorIndexToRGB(color:INTEGER)" in res["error"]
+
+
+def test_proxy_passes_good_calls_through(root, typed_vs, tables):
+    write_job(root, "c2", "vs.Rect((0, 0), (10, 5))\nvs.Rect(0, 0, 10, 5)\nvs.GetFName()")
+    bridge.run_pending(root, vs_module=typed_vs)
+    res = read_result(root, "c2")
+    assert res["ok"] is True and res["value"] == "Plot.vwx"
+
+
+def test_proxy_only_checks_functions_whose_live_signature_matches(root, typed_vs, tables):
+    typed_vs.Rect = _fn("Definition:\n  vs.Rect(p1, p2, extra)")  # a future Vectorworks
+    bridge._CACHE["tables"] = None
+    write_job(root, "c3", "vs.Rect('anything', 'goes', 1)")
+    bridge.run_pending(root, vs_module=typed_vs)
+    assert read_result(root, "c3")["ok"] is True
+
+
+def test_proxy_refuses_known_crashers_and_dialog_openers(root, typed_vs, tables):
+    write_job(root, "c4", "vs.UprString('abc')")
+    bridge.run_pending(root, vs_module=typed_vs)
+    res = read_result(root, "c4")
+    assert res["ok"] is False and "VSUnsafeError" in res["error"] and "crash" in res["error"]
+    write_job(root, "c5", "vs.EditProperties(None)")
+    bridge.run_pending(root, vs_module=typed_vs)
+    assert "dialog" in read_result(root, "c5")["error"]
+    write_job(root, "c6", "vs.EditProperties(None)", allow_dialogs=True)
+    bridge.run_pending(root, vs_module=typed_vs)
+    assert read_result(root, "c6")["ok"] is True
+
+
+def test_check_can_be_switched_off_per_job(root, typed_vs, tables):
+    write_job(root, "c7", "vs.ColorIndexToRGB((1, 2, 3))", check=False)
+    bridge.run_pending(root, vs_module=typed_vs)
+    assert read_result(root, "c7")["ok"] is True
+
+
+def test_proxied_callback_is_unwrapped_for_vectorworks(root, typed_vs, tables):
+    seen = {}
+    typed_vs.ForEachObject = _fn("Definition:\n  vs.ForEachObject(callback, c)",
+                                 lambda cb, c: seen.setdefault("cb", cb))
+    typed_vs.SetSelect = _fn("Definition:\n  vs.SetSelect(h)", lambda h: None)  # named parameter: no *args
+    bridge._CACHE["tables"] = None
+    write_job(root, "c8", "vs.ForEachObject(vs.SetSelect, 'T=RECT')")
+    bridge.run_pending(root, vs_module=typed_vs)
+    assert read_result(root, "c8")["ok"] is True
+    assert seen["cb"] is typed_vs.SetSelect  # the real built-in, not our wrapper
+
+
+def test_import_vs_inside_the_job_gets_the_proxy_too(root, typed_vs, tables):
+    write_job(root, "c10", "import vs as v2\nv2.ColorIndexToRGB((1, 2, 3))")
+    bridge.run_pending(root, vs_module=typed_vs)
+    assert "VSArgumentError" in read_result(root, "c10")["error"]
+
+
+def test_missing_tables_mean_no_checking(root, typed_vs, monkeypatch, tmp_path):
+    monkeypatch.setattr(bridge, "_HERE", str(tmp_path / "nowhere"))
+    bridge._CACHE["tables"] = None
+    write_job(root, "c9", "vs.ColorIndexToRGB((1, 2, 3))")
+    bridge.run_pending(root, vs_module=typed_vs)
+    assert read_result(root, "c9")["ok"] is True
+
+
+def test_bridge_version_is_0_2_0():
+    assert bridge.BRIDGE_VERSION == "0.2.0"
