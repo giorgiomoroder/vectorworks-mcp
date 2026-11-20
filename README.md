@@ -302,6 +302,10 @@ as of this writing:
 | [BhaveshY/vectorworks-mcp](https://github.com/BhaveshY/vectorworks-mcp) | Windows, VW 2024/2025 | TCP, prebuilt native SDK plug-in | Architecture: walls, doors, slabs, roofs, exports, screenshots |
 | [chronista-club/vectorworks-mcp](https://github.com/chronista-club/vectorworks-mcp) (was mako-357) and [upipibi/claude-vectorworks-mcp](https://github.com/upipibi/claude-vectorworks-mcp) | macOS | Unix socket from a C++ SDK plug-in you compile | 6 generic tools; SDK calls off the main thread can crash the document |
 | [edmacovaz/rt-vectorworks-mcp](https://github.com/edmacovaz/rt-vectorworks-mcp) | macOS | Python modal dialog, TCP | Read-only, architecture template extraction |
+| [seraphinernst4/vectorworks-2d-mcp](https://github.com/seraphinernst4/vectorworks-2d-mcp) ("Keystone", a fork of this project) | macOS, German VW 2026 | Same job folder; triggers Python over VectorScript without a menu command; type-checked `vs` proxy | Exact 2D architecture drawing, geometry checks and repair, DWG import clean-up, room planning |
+| [MattA-Official/vwmcp](https://github.com/MattA-Official/vwmcp) | Windows, VW 2026/2027 | Single Rust .exe, file IPC, keyboard shortcut posted to Vectorworks | 12 general tools, well documented |
+| [stevenmorgan94/vw-mcp](https://github.com/stevenmorgan94/vw-mcp) | macOS, VW 2027 | C++ library plug-in, loopback HTTP, Node relay | 4 tools; published a safety sweep of ~2,800 `vs.*` calls (safe / opens a dialog / crashes) |
+| [Gribiche64/vectorworks-bridge](https://github.com/Gribiche64/vectorworks-bridge) | macOS | No plug-in: reads and patches Spotlight's Lightwright Data Exchange XML | Fixture data and field edits for Lighting Devices only; dormant since 2026-09 |
 
 What is different here:
 
@@ -314,8 +318,10 @@ What is different here:
 - **Spotlight.** Lighting devices, positions and paperwork as typed tools,
   tested on a real plot, rather than generic geometry.
 
-If you draw buildings on Windows, vwx-mcp has far more tools. If you need
-ConnectCAD, watch showcad-mcp.
+If you draw buildings on Windows, vwx-mcp has far more tools. If you draw
+exact 2D architecture on a German Mac, Keystone (built on this code) goes
+much deeper there. If you need ConnectCAD, watch showcad-mcp. This project
+is also listed on [Glama](https://glama.ai/mcp/servers/giorgiomoroder/vectorworks-mcp).
 
 ## License
 

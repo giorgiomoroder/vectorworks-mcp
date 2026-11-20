@@ -229,17 +229,30 @@ Distribution:
 - [ ] Stretch from the original brief: ConnectCAD signal/cable tools,
       Vision/MVR export, GDTF fixture mapping.
 
-## Landscape (checked 2026-11-17)
+## Landscape (checked 2026-11-20)
 
 Other Vectorworks MCP servers, summarized in the README's "How this compares":
 vicquick/vwx-mcp (Windows, 248 tools, file IPC + native palette + menu command,
 same "writes only inside a menu command" finding as ours), its ConnectCAD/Spotlight
 fork SRVR-JOE/showcad-mcp, BhaveshY/vectorworks-mcp (Windows, architecture,
-has screenshots with image-to-world mapping and a `doctor`), the C++ socket
-pair chronista-club (ex mako-357) / upipibi, and edmacovaz/rt-vectorworks-mcp
-(read-only). Our niche: Mac-native, no SDK, Spotlight, per-call revert.
-Re-check `gh search repos "vectorworks mcp"` and the README list before
-making positioning claims; the search misses vwx-mcp by name.
+now 10 compact tools over a compiled SDK plug-in; screenshots with
+image-to-world mapping, a `doctor`, a type-checking lint), the C++ socket
+pair chronista-club (ex mako-357) / upipibi, edmacovaz/rt-vectorworks-mcp
+(read-only), and, found 2026-11-20 via Glama: **seraphinernst4/vectorworks-2d-mcp
+"Keystone"** (a fork of this repo, German, exact 2D architecture;
+menu-command-free trigger, type-checked `vs` proxy, document pin guard,
+atomic job claim protocol, an update nag we must not copy),
+**MattA-Official/vwmcp** (Rust, Windows, 4 stars), **stevenmorgan94/vw-mcp**
+(C++ plug-in for 2027 with a published safety sweep of ~2,800 `vs.*` calls),
+**Gribiche64/vectorworks-bridge** (Lightwright Data Exchange XML, no plug-in,
+format decoded in its PROTOCOL.md, dormant). Details and a ranked borrow
+list: `docs/landscape-2026-11-20.md`. Our niche: Mac-native, no SDK,
+Spotlight, per-call revert. Listed on Glama
+(glama.ai/mcp/servers/giorgiomoroder/vectorworks-mcp; claimed by Michael
+2026-11-20, `glama.json` in the repo root; after a push, "Request a re-sync"
+in the Admin tab). Re-check `gh search repos vectorworks mcp --sort updated`
+and the README list before making positioning claims; the search misses
+vwx-mcp by name.
 
 ## Design decisions already made (don't relitigate)
 
