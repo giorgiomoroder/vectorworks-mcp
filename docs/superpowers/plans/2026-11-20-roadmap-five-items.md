@@ -1,5 +1,9 @@
 # Roadmap: five items (MVR check, drawing quality, view mapping, onboarding, more objects)
 
+> **Status 2026-11-20 evening:** Tasks A, E1, D1-D3, B1, B2, C, E2 and `vw_insert_band`
+> (E3) are implemented offline and committed; the live checks listed per task are open.
+> Hoists and truss corners (E3) are not started.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement
 > this plan task-by-task (inline, one commit per task). Steps use checkbox (`- [ ]`) syntax.
 > Read `CLAUDE.md` (hard rules) and `docs/vs-notes.md` first. **No live Vectorworks

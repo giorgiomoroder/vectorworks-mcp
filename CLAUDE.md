@@ -34,6 +34,19 @@ before changing anything that touches Vectorworks.
   layers/classes, move/delete, view; live-tested the same day (vs-notes
   "Drawing tools").
 - `src/vwmcp/library.py`: finds library `.vwx` files on disk (app + user folders).
+- `src/vwmcp/mvr.py` (+ `vwlib.mvr_data`): `vw_mvr_check`, MVR export pre-flight;
+  pure checks over device rows (2026-11-20, offline). `hookup.py`: `vw_import_hookup`,
+  .csv/.tsv → `vw_set_lighting_device_fields` updates. `classes.py` +
+  `data/class_standards.json`: `vw_apply_class_standard` (revert op `class_attrs`).
+  `viewmap.py`: screenshot pixel ↔ drawing coordinates (`vw_screenshot(mapping=True)`,
+  `vw_point_to_world`). `platform.py`: step placement for `vw_insert_platform`.
+  Tool group `drawing` = class standard + `vw_create_sheet`.
+- `skills/vectorworks-spotlight/SKILL.md`: recipes for Claude (tested: every `vw_*`
+  it names must exist). `scripts/build-mcpb.py` + `mcpb_main.py`: Claude Desktop
+  extension bundle (MCPB 0.4, `uv` runtime, tool list generated); `vw_doctor` is the
+  in-Claude setup check that also installs the bridge (`fix=True`).
+- `docs/superpowers/plans/2026-11-20-roadmap-five-items.md`: the plan behind the
+  2026-11-20 batch; its "Live check" lists are what the next safe session runs.
 - `src/vwmcp/menu/MCP Run Job.vsm`: the menu command itself (made once in
   Michael's 2026 Plug-in Manager; a copy loads in 2026 and 2027).
   `install-plugin` places it in Plug-ins unless one is there; only the
@@ -118,6 +131,8 @@ on a throwaway doc and record findings in `docs/vs-notes.md`:
       `ImportResourceToCurrentFile`). Only locally present `.vwx` libraries are
       seen (many are download-on-demand); importing a truss symbol brings the 2D
       definition only.
+- [ ] **Hoists** (Spotlight `Hoist` PIO) and **truss corners/towers**: need the
+      default objects read live first (parameter names), then build. Not started.
 - [~] **Truss.** `vw_insert_truss_run` (live 2026-11-17): straight runs from a
       library symbol, end to end at a height, dimensions/weight from the symbol's
       `BrxTrussItemRecord`, linked via `C_START_UUID`, new TrussSystem, class in a
@@ -147,20 +162,22 @@ on a throwaway doc and record findings in `docs/vs-notes.md`:
       check). Still to do: `OpenFrom` popup values beyond "Center" (read
       the default object live), pipe-and-drape hardware fields,
       rails on the outer edges
-      of a platform, round decks, a one-call "platform with steps" composite.
-- [ ] **Band members and instruments.** Blocked on content (2026-11-17): no
+      of a platform, round decks. `vw_insert_platform` (decks + steps on an edge)
+      built 2026-11-20 from the live-tested helpers; not run live as a whole.
+- [~] **Band members and instruments.** `vw_insert_band` built offline 2026-11-20
+      (symbols + name labels; not run live). Content still blocked (2026-11-17): no
       people or backline library is on this Mac (`Libraries/Visualization/People`
       is a placeholder, no backline folder, and `Libraries/defaultContent.db`,
       the local SQLite index of 622 default files, has neither). Michael has to
       download them once in the Resource Manager (Vectorworks Libraries →
       Visualization/People and Entertainment/Audio backline content); after
       that `vw_list_library_files` + `vw_insert_symbol` already place them. Then:
-      a `vw_insert_band` style tool (people + backline at positions, named,
-      classed) on top of that.
+      `vw_insert_band` places them (people + backline at positions, named, classed).
 - [x] **`vw_screenshot`** (2026-11-17): window capture via ctypes CGWindowList
-      (JXA's ObjC bridge segfaults in osascript) + `screencapture -l`. Still to do:
-      an image-to-world mapping (BhaveshY's `vw_capture` returns one) so Claude can
-      point at what it sees; needs view center/zoom and the drawing-area rect, live.
+      (JXA's ObjC bridge segfaults in osascript) + `screencapture -l`. Image-to-world
+      mapping built 2026-11-20 (`mapping=True`, `vw_point_to_world`, from
+      `ModelPt2DToScreenPt`; **not run live**: coordinate space and Top/Plan
+      projection code to verify, see vs-notes).
 - [x] Generic helpers (2026-11-17, live): `vw_create_layer`/`class`,
       `vw_delete_objects` (revert barrier), `vw_move_objects`, `vw_set_view`,
       plus `vw_create_pio` / `vw_get_pio_parameters` / `vw_set_pio_parameters`.
@@ -172,6 +189,18 @@ on a throwaway doc and record findings in `docs/vs-notes.md`:
       so custom pieces modeled elsewhere can be placed like library items.
 - [ ] Lower priority: architecture drawing tools (walls via `SetComponentWidth` /
       `SetWallCornerHeights`, doors), only if venue shells are needed often.
+
+2026-11-20 batch (Michael: "all five options"), built offline, **none run live**:
+- [x] a. `vw_mvr_check` (field names `Fixture ID`, `GDTF Fixture Name`, `Fixture
+      Mode`, `GetSymbolType` values to confirm live).
+- [x] b. `vw_apply_class_standard`, `vw_create_sheet` (viewport scale object
+      variable 1003 and Title Block Border parameter names to confirm live).
+- [x] c. `vw_screenshot(mapping=True)` + `vw_point_to_world`.
+- [x] d. `vw_doctor`, `vw_ping` lists documents, session-start instructions,
+      skill, `.mcpb` bundle (validated with the official schema; round trip over
+      stdio from the unzipped bundle worked).
+- [~] e. `vw_import_hookup`, `vw_insert_platform`, `vw_insert_band` built; hoists
+      and truss corners wait for live reads.
 
 Beta hardening:
 - [ ] Gather tester reports (issue forms: bug + "works on my setup", label `compatibility`).

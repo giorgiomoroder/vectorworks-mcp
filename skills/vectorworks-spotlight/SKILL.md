@@ -101,6 +101,29 @@ after and anything Spotlight overrode.
   objects by parameter name with `vw_create_pio` / `vw_set_pio_parameters`
   (`vw_get_pio_parameters` shows the names).
 
+### Platforms and people in one call
+- `vw_insert_platform(width, depth, height, x, y, columns, rows, steps_on="front",
+  rails=True, class_name="Stage-Decks", document=)`: decks plus a flight of steps
+  centred on the chosen edge, one revertible step.
+- `vw_insert_band(members=[{"symbol", "x", "y", "rotation", "name"}], class_name="People")`
+  places people/backline symbols with a name label each. The symbols must be
+  in the document first (import from the People / Audio libraries).
+
+### Make it look like a drawing
+1. `vw_apply_class_standard("spotlight", document=)`: a consistent class set
+   (Lighting-*, Rigging-*, Stage-*, Soft Goods, Audio, Video, Scenery, People,
+   Venue-*, Notes) with colours and line weights; `overwrite=True` restyles
+   classes that already exist. Then put objects in those classes
+   (`class_name=` on the insert tools).
+2. `vw_create_sheet(name, layers=[...], scale=48, hide_classes=[...], title=,
+   sheet_number=, document=)`: a sheet layer with a viewport of those design
+   layers and a title block. Both are one revertible step each.
+
+### Point at what you see
+`vw_screenshot(mapping=True)` returns the picture plus a pixel-to-drawing
+mapping (Top/Plan views); `vw_point_to_world(px, py)` turns a pixel you want
+to talk about into x, y for the insert tools.
+
 ### Housekeeping
 `vw_create_layer`, `vw_create_class`, `vw_move_objects`, `vw_duplicate_layer`,
 `vw_set_vertices`, `vw_find_objects`, `vw_get_record` / `vw_set_record`.
