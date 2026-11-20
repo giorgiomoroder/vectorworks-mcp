@@ -78,6 +78,17 @@ menu command gets a fresh Python state (module globals don't persist).
   `NameClass` creates and activates (restored afterwards). Readers
   `GetClPenFore` … `ColorIndexToRGB` feed the `class_attrs` revert op.
 
+## View mapping for screenshots (not run live, 2026-11-20)
+
+- `vwlib.view_mapping`: `GetVCenter()`, `ModelPt2DToScreenPt((x, y))` for the
+  centre and centre + 1 unit along x and y, `GetZoom()`, `GetLScale(ActLayer())`,
+  `GetProjection(ActLayer())`, `GetScreen()`. Assumptions to check live:
+  the screen point space (global screen points like the CGWindow bounds that
+  `vw_screenshot` reports? window-relative? Retina pixels?), the y direction,
+  and that `GetProjection` returns 6 for Top/Plan (`TOP_PLAN_PROJECTIONS`).
+  Calibrate by clicking a known object in a mapped screenshot and comparing
+  `vw_point_to_world` with its `GetSymLoc`.
+
 ## Drawing and 3D
 
 - Walls from `vs.Wall(...)` have one component; `SetWallThickness` and

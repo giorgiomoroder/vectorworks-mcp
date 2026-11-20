@@ -156,7 +156,8 @@ Vectorworks restart. Claude Code users keep using the installer script.
 | `vw_exec_python` | Run any Vectorworks Python (`vs.*`) and get stdout, value, traceback; records created objects for revert; optional timeout |
 | `vw_exec_file` | Same as `vw_exec_python`, for a script file on the Mac |
 | `vw_lint` | Check Python for Vectorworks without running it: syntax, wrong `vs.*` argument counts, deprecated calls (the things that open the blocking "Script Errors" dialog). `vw_exec_python` runs this check first |
-| `vw_screenshot` | The document window as an image (plus window geometry and any dialog or open menu in front); works even while a dialog blocks the bridge |
+| `vw_screenshot` | The document window as an image (plus window geometry and any dialog or open menu in front); works even while a dialog blocks the bridge; `mapping=True` adds the pixel-to-drawing-coordinates mapping |
+| `vw_point_to_world` | Drawing x, y of a pixel in the last mapped screenshot (Top/Plan), no job |
 | `vw_doctor` | Setup check from inside Claude: bridge, menu command file, Claude configs, process, stale files, log; `fix=True` reinstalls a missing bridge |
 | `vw_vs_lookup` | Search the `vs.*` API of *your* Vectorworks, with signatures |
 

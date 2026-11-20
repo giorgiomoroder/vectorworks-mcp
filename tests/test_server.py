@@ -259,3 +259,54 @@ def test_doctor_fix_does_not_install_when_bridge_is_fine(monkeypatch):
     monkeypatch.setattr(install, "install_plugin", lambda *a, **k: pytest.fail("must not install"))
     out = server.vw_doctor(fix=True)
     assert out["ok"] is True and "installed" not in out
+
+
+# ---- screenshot mapping -------------------------------------------------------
+
+def _fake_capture(tmp_path):
+    import struct, zlib
+    from vwmcp import screenshot as ss
+
+    ihdr = struct.pack(">IIBBBBB", 500, 400, 8, 2, 0, 0, 0)
+    png = (b"\x89PNG\r\n\x1a\n" + struct.pack(">I", len(ihdr)) + b"IHDR" + ihdr
+           + struct.pack(">I", zlib.crc32(b"IHDR" + ihdr)))
+    path = tmp_path / "shot.png"
+    path.write_bytes(png)
+    window = ss.Window(id=1, title="Plot.vwx", layer=0, x=100, y=50, width=1000, height=800)
+    return lambda **kw: (path, window, [])
+
+
+def test_screenshot_with_mapping_adds_world_coordinates(monkeypatch, tmp_path):
+    import json
+    from vwmcp import screenshot as ss
+
+    monkeypatch.setattr(ss, "screenshot", _fake_capture(tmp_path))
+    monkeypatch.setattr(server, "vw", lambda fn, **kw: {
+        "center": [10.0, 20.0], "center_screen": [500.0, 400.0], "unit_x_screen": [600.0, 400.0],
+        "unit_y_screen": [500.0, 300.0], "zoom": 100.0, "layer_scale": 48.0, "projection": 6,
+        "top_plan": True, "units": '"'})
+    out = server.vw_screenshot(mapping=True)
+    meta = json.loads(out[1].text)
+    assert meta["mapping"]["units_per_pixel"] == pytest.approx(0.02)
+    assert meta["mapping"]["image_center_world"] == [pytest.approx(11.0), pytest.approx(19.5)]
+    # the pure follow-up uses the last mapping
+    assert server.vw_point_to_world(250, 175) == {"x": 11.0, "y": 20.0, "units": '"'}
+
+
+def test_screenshot_mapping_failure_is_soft(monkeypatch, tmp_path):
+    import json
+    from mcp.server.mcpserver.exceptions import ToolError
+    from vwmcp import screenshot as ss
+
+    monkeypatch.setattr(ss, "screenshot", _fake_capture(tmp_path))
+
+    def boom(fn, **kw):
+        raise ToolError("Vectorworks has not answered")
+
+    monkeypatch.setattr(server, "vw", boom)
+    monkeypatch.setattr(server, "_LAST_MAPPING", None)
+    out = server.vw_screenshot(mapping=True)
+    meta = json.loads(out[1].text)
+    assert "mapping" not in meta and "not answered" in meta["mapping_error"]
+    with pytest.raises(ToolError, match="mapping=True"):
+        server.vw_point_to_world(1, 1)

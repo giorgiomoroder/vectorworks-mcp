@@ -10,7 +10,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.mcpserver.utilities.types import Image
 from mcp.types import TextContent
 
-from vwmcp import app, calls, config, documents, render, screenshot, vslint
+from vwmcp import app, calls, config, documents, render, screenshot, viewmap, vslint
 from vwmcp.app import READ, WRITE, mcp, vw
 from vwmcp.client import BridgeError
 from vwmcp.journal import JournalError
@@ -603,8 +603,13 @@ def vw_revert_last(document: str | None = None) -> dict:
     return out
 
 
+_LAST_MAPPING: viewmap.Mapping | None = None
+
+
 @mcp.tool(annotations=READ)
-def vw_screenshot(title: str | None = None, max_width: int = 1600) -> list[Image | TextContent]:
+def vw_screenshot(
+    title: str | None = None, max_width: int = 1600, mapping: bool = False
+) -> list[Image | TextContent]:
     """Capture the Vectorworks document window as an image, to check drawn results
     or to see which dialog is blocking. Does not go through Vectorworks at all
     (no job, no Apple Event), so it works even when other tools time out.
@@ -612,7 +617,13 @@ def vw_screenshot(title: str | None = None, max_width: int = 1600) -> list[Image
     the image is shrunk to `max_width` pixels. Returns the image plus window
     geometry (screen points), the saved file path, and `in_front`: any dialog
     or open menu (a right-click menu left open also stalls jobs) that the
-    document capture would not show."""
+    document capture would not show. mapping=True adds one small job to read
+    the view (centre, zoom, projection) and returns `mapping`: drawing
+    coordinates of the image origin and units per pixel, so a point you see in
+    the picture can be turned into x, y with vw_point_to_world (exact in
+    Top/Plan only). If that job fails the picture still comes back, with
+    `mapping_error`."""
+    global _LAST_MAPPING
     try:
         path, window, in_front = screenshot.screenshot(
             app=DEFAULT_APP,
@@ -622,5 +633,33 @@ def vw_screenshot(title: str | None = None, max_width: int = 1600) -> list[Image
         )
     except screenshot.ScreenshotError as e:
         raise ToolError(str(e)) from e
-    meta = {"window": window.as_dict(), "path": str(path), "in_front": in_front}
+    meta: dict[str, Any] = {"window": window.as_dict(), "path": str(path), "in_front": in_front}
+    if mapping:
+        try:
+            view = vw("view_mapping")
+            m = viewmap.Mapping.from_view(view, window.as_dict(), viewmap.png_size(path),
+                                          units=view.get("units", ""))
+            _LAST_MAPPING = m
+            meta["mapping"] = m.as_dict()
+            meta["view"] = {k: view[k] for k in ("zoom", "layer_scale", "projection", "layer") if k in view}
+        except (ToolError, ValueError, OSError) as e:
+            meta["mapping_error"] = str(e)
     return [Image(path=str(path)), TextContent(type="text", text=json.dumps(meta))]
+
+
+@mcp.tool(annotations=READ)
+def vw_point_to_world(px: float, py: float, mapping: dict | None = None) -> dict:
+    """Drawing coordinates (x, y) of an image pixel of the last
+    vw_screenshot(mapping=True), e.g. to say "put the truss where that gap is"
+    or to check that an object landed where it looks. Pure arithmetic, no job.
+    `mapping` may be the mapping dict from any earlier screenshot; default is
+    the most recent one in this server session. Exact in Top/Plan views only
+    (the mapping carries a warning otherwise)."""
+    m = viewmap.Mapping.from_dict(mapping) if mapping else _LAST_MAPPING
+    if m is None:
+        raise ToolError("No mapping yet: call vw_screenshot(mapping=True) first.")
+    x, y = m.to_world(px, py)
+    out = {"x": x, "y": y, "units": m.units}
+    if m.warning:
+        out["warning"] = m.warning
+    return out

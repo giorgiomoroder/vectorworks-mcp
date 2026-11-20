@@ -700,6 +700,32 @@ def create_sheet(name, layers, scale=48.0, hide_classes=None, title_block=None):
     return out
 
 
+# ---- view mapping (for screenshots) ---------------------------------------------
+# Not run live yet (2026-11-20): the coordinate space of ModelPt2DToScreenPt
+# (global screen points? window-relative? pixels on Retina?) and the value
+# GetProjection returns for Top/Plan are the things to verify first.
+
+TOP_PLAN_PROJECTIONS = (6,)  # assumed: Vectorworks' kProjectionPlan
+
+
+def view_mapping():
+    """Where the view centre and the centre + 1 unit (x, then y) land on
+    screen, so the server can map screenshot pixels to drawing coordinates."""
+    cx, cy = vs.GetVCenter()
+    layer = vs.ActLayer()
+    proj = vs.GetProjection(layer)
+    s0 = vs.ModelPt2DToScreenPt((cx, cy))
+    s1 = vs.ModelPt2DToScreenPt((cx + 1.0, cy))
+    s2 = vs.ModelPt2DToScreenPt((cx, cy + 1.0))
+    units = vs.GetUnits()
+    return {"center": [cx, cy], "center_screen": [s0[0], s0[1]],
+            "unit_x_screen": [s1[0], s1[1]], "unit_y_screen": [s2[0], s2[1]],
+            "zoom": vs.GetZoom(), "layer_scale": vs.GetLScale(layer),
+            "projection": proj, "top_plan": proj in TOP_PLAN_PROJECTIONS,
+            "units": (units[4] or "").strip(), "screen": list(vs.GetScreen()),
+            "layer": _str(vs.GetLName(layer))}
+
+
 # ---- libraries and resources ------------------------------------------------------
 # Type codes for BuildResourceList: 16 symbol definition (also plug-in styles,
 # which are symbol definitions wrapping one plug-in object), 47 record format.
