@@ -147,6 +147,14 @@ uvx --from git+https://github.com/giorgiomoroder/vectorworks-mcp vwmcp doctor
 | `vw_doctor` | Setup check from inside Claude: bridge, menu command file, Claude configs, process, stale files, log; `fix=True` reinstalls a missing bridge |
 | `vw_vs_lookup` | Search the `vs.*` API of *your* Vectorworks, with signatures |
 
+## Skill: recipes for Claude
+
+`skills/vectorworks-spotlight/SKILL.md` teaches Claude the session-start
+document check, the safety rules and step-by-step recipes (hang fixtures,
+hookup import, MVR pre-flight, platforms, troubleshooting). Claude Code:
+copy the folder into `~/.claude/skills/`. Claude Desktop: paste the file's
+text into a project's instructions.
+
 ## Your drawing data and NDAs
 
 **What leaves your Mac:** whatever Claude reads from your drawing, plus
