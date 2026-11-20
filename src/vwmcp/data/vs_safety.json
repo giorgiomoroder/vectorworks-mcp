@@ -1,0 +1,388 @@
+{
+ "arg_check": {
+  "AdditionalDefRecords": [
+   "arity+1:interactive"
+  ],
+  "ApplyLightInfoRecord": [
+   "wrong-object-type:crash"
+  ],
+  "BeginPoly": [
+   "unpaired:crash"
+  ],
+  "BindLayerToArcGISFS": [
+   "arity+1:interactive",
+   "arity-1:interactive",
+   "edge-empty:interactive",
+   "wrong-type:interactive"
+  ],
+  "CallToolByName": [
+   "arity-1:crash"
+  ],
+  "CreateScriptResource": [
+   "wrong-type:window"
+  ],
+  "CreateVPLrOvrd": [
+   "arity-1:crash"
+  ],
+  "DelSavedSettings": [
+   "arity-1:crash"
+  ],
+  "EditCriteriaWithUI": [
+   "arity-1:interactive",
+   "edge-empty:crash"
+  ],
+  "EditOpenGLPrefs": [
+   "arity+1:crash"
+  ],
+  "EditProperties": [
+   "arity-1:crash"
+  ],
+  "EditRenderWorksPrefs": [
+   "arity+1:crash"
+  ],
+  "EndSym": [
+   "unpaired:crash"
+  ],
+  "GetBinaryConstraint": [
+   "none-handle:crash"
+  ],
+  "GetComponents": [
+   "arity-1:crash"
+  ],
+  "GetDisplayWith2DComp": [
+   "wrong-type:crash"
+  ],
+  "GetDropShadowByCls": [
+   "arity-1:crash"
+  ],
+  "GetGradientData": [
+   "wrong-object-type:crash"
+  ],
+  "GetGradientDataN": [
+   "wrong-object-type:crash"
+  ],
+  "GetGradientMidpointPosition": [
+   "wrong-object-type:crash"
+  ],
+  "GetGradientOpacity": [
+   "wrong-object-type:crash"
+  ],
+  "GetGradientSpotColor": [
+   "wrong-object-type:crash"
+  ],
+  "GetGradientSpotPosition": [
+   "wrong-object-type:crash"
+  ],
+  "GetNumGradientSegments": [
+   "wrong-object-type:crash"
+  ],
+  "GetProduct": [
+   "arity+1:interactive"
+  ],
+  "GetRoofAttributes": [
+   "arity-1:crash"
+  ],
+  "GetSheetLayerUserOrigin": [
+   "arity-1:crash"
+  ],
+  "GetSingularConstraint": [
+   "none-handle:crash"
+  ],
+  "GetVPLrOvrdFillBack": [
+   "arity-1:crash"
+  ],
+  "GetVPLrOvrdFillFore": [
+   "arity-1:crash"
+  ],
+  "GetVPLrOvrdOpty": [
+   "arity-1:crash"
+  ],
+  "GetVPLrOvrdPenBack": [
+   "arity-1:crash"
+  ],
+  "GetVPLrOvrdPenFore": [
+   "arity-1:crash"
+  ],
+  "GetWallThickness": [
+   "arity-1:crash"
+  ],
+  "HasConstraint": [
+   "arity-1:crash"
+  ],
+  "InsertGradientData": [
+   "arity-1:crash",
+   "wrong-object-type:crash"
+  ],
+  "InsertGradientSegment": [
+   "wrong-object-type:crash"
+  ],
+  "LDevice_AddAccessory": [
+   "wrong-object-type:crash"
+  ],
+  "LDevice_DeleteAcc": [
+   "wrong-object-type:crash"
+  ],
+  "LDevice_GetAccCount": [
+   "wrong-object-type:crash"
+  ],
+  "LDevice_GetAccPos2D": [
+   "wrong-type:crash"
+  ],
+  "LDevice_GetAccPos3D": [
+   "wrong-type:crash"
+  ],
+  "LDevice_GetCellCount": [
+   "wrong-object-type:crash"
+  ],
+  "LDevice_GetParamBool": [
+   "arity-1:crash"
+  ],
+  "LDevice_GetParamLong": [
+   "arity-1:crash"
+  ],
+  "LDevice_GetParamReal": [
+   "arity-1:crash"
+  ],
+  "LDevice_GetParamStr": [
+   "arity-1:crash"
+  ],
+  "LDevice_ResetVisual": [
+   "arity-1:crash"
+  ],
+  "LDevice_SetAccCell": [
+   "wrong-object-type:crash"
+  ],
+  "LDevice_SetAccPos2D": [
+   "wrong-type:crash"
+  ],
+  "LDevice_SetAccPos3D": [
+   "wrong-type:crash"
+  ],
+  "LDevice_SetParamBool": [
+   "wrong-object-type:crash"
+  ],
+  "LDevice_SetParamLong": [
+   "wrong-object-type:crash"
+  ],
+  "LDevice_SetParamReal": [
+   "wrong-object-type:crash"
+  ],
+  "LDevice_SetParamStr": [
+   "wrong-object-type:crash"
+  ],
+  "OLDGetHangingPos": [
+   "wrong-object-type:crash"
+  ],
+  "OLDHoistSectionDlg": [
+   "arity+1:interactive"
+  ],
+  "OLDTrussSectionDlg": [
+   "arity+1:interactive"
+  ],
+  "ObjPropsEditDlg": [
+   "arity+1:interactive"
+  ],
+  "Ord": [
+   "arity-1:crash"
+  ],
+  "Plant_CreateDupPlant": [
+   "arity+1:interactive",
+   "none-handle:interactive",
+   "wrong-type:interactive"
+  ],
+  "ProgressDlgStart": [
+   "arity+1:window"
+  ],
+  "RefreshResManager": [
+   "arity+1:hang",
+   "wrong-type:hang"
+  ],
+  "RemoveGradientSegment": [
+   "wrong-object-type:crash"
+  ],
+  "RemoveVPLrOvrd": [
+   "arity-1:crash"
+  ],
+  "RunColorPaletteMgr": [
+   "arity+1:interactive"
+  ],
+  "RunGridSettingsDlg": [
+   "arity+1:interactive"
+  ],
+  "RunImageComp": [
+   "arity+1:interactive",
+   "arity-1:interactive",
+   "edge-empty:interactive",
+   "wrong-type:interactive"
+  ],
+  "RunNewColorPalette": [
+   "arity+1:crash"
+  ],
+  "SM_Preferences": [
+   "arity+1:interactive"
+  ],
+  "SetBinaryConstraint": [
+   "arity+1:interactive",
+   "arity-1:interactive",
+   "edge-huge:interactive",
+   "edge-neg:interactive",
+   "edge-zero:interactive",
+   "wrong-type:interactive"
+  ],
+  "SetDefOpacityByClsN": [
+   "arity+1:crash"
+  ],
+  "SetDisplayWith2DComp": [
+   "wrong-type:crash"
+  ],
+  "SetDropShadowByCls": [
+   "wrong-type:crash"
+  ],
+  "SetGradientData": [
+   "wrong-object-type:crash"
+  ],
+  "SetGradientDataN": [
+   "wrong-object-type:crash"
+  ],
+  "SetGradientMidpointPosition": [
+   "wrong-object-type:crash"
+  ],
+  "SetGradientOpacity": [
+   "wrong-object-type:crash"
+  ],
+  "SetGradientSpotColor": [
+   "wrong-object-type:crash"
+  ],
+  "SetGradientSpotPosition": [
+   "wrong-object-type:crash"
+  ],
+  "SetLayerElevation": [
+   "wrong-type:crash"
+  ],
+  "SetLayerElevationN": [
+   "wrong-type:crash"
+  ],
+  "SetLightDirection": [
+   "wrong-object-type:crash"
+  ],
+  "SetRoofAttributes": [
+   "wrong-object-type:crash"
+  ],
+  "SetRoofEdge": [
+   "arity+1:interactive",
+   "arity-1:interactive"
+  ],
+  "SetSheetLayerUserOrigin": [
+   "wrong-type:crash"
+  ],
+  "SetSingularConstraint": [
+   "arity+1:interactive",
+   "arity-1:interactive",
+   "edge-huge:interactive",
+   "edge-neg:interactive",
+   "edge-zero:interactive",
+   "wrong-type:interactive"
+  ],
+  "SetSpreadAngle": [
+   "wrong-object-type:crash"
+  ],
+  "SetTexMapRealN": [
+   "arity-1:crash"
+  ],
+  "ShowCreateImageDialog": [
+   "arity+1:interactive"
+  ],
+  "ShowGradientEditorDialog": [
+   "arity+1:interactive",
+   "none-handle:crash",
+   "wrong-type:interactive"
+  ],
+  "ShowWebDlg": [
+   "arity+1:interactive",
+   "arity-1:interactive",
+   "edge-empty:interactive",
+   "wrong-type:interactive"
+  ],
+  "Space_AddAreaModif": [
+   "arity+1:interactive"
+  ],
+  "Space_CreateSpace": [
+   "arity+1:window"
+  ],
+  "TBB_OpenTBBSelDlg": [
+   "arity+1:interactive",
+   "edge-empty:interactive",
+   "wrong-type:interactive"
+  ],
+  "TBB_UpdateOldVAATB": [
+   "arity+1:interactive"
+  ],
+  "TrueTypeToPoly": [
+   "arity-1:crash"
+  ],
+  "UpdateFeatureLayer": [
+   "arity+1:interactive"
+  ],
+  "UpdateLayerFromFS": [
+   "arity+1:interactive",
+   "arity-1:interactive",
+   "wrong-type:interactive"
+  ]
+ },
+ "crash": [
+  "AddVectorFillLayer",
+  "CC_GetCircuitDest",
+  "CC_GetCircuitSource",
+  "DisplayContextHelpOfCurrentPlugin",
+  "DisplayLayerScaleDialog",
+  "DisplayOrganizationDialog",
+  "Plant_ReplacePlantParam",
+  "SetConstraintValue",
+  "SetTexSpaceEndCap",
+  "TBB_AttachRecords",
+  "UprString"
+ ],
+ "document_level": [
+  "ProgressDlgYield",
+  "Space_CreateSpace"
+ ],
+ "hang": [
+  "RefreshResManager",
+  "RetrieveOpenGLPrefs"
+ ],
+ "interactive": [
+  "AdditionalDefRecords",
+  "BindLayerToArcGISFS",
+  "EditGeorefWithUI",
+  "EditOpenGLPrefs",
+  "EditProperties",
+  "EditRenderWorksPrefs",
+  "GetProduct",
+  "OLDHoistSectionDlg",
+  "OLDTrussSectionDlg",
+  "ObjPropsEditDlg",
+  "Plant_CreateDupPlant",
+  "Plant_LocateStyleMgr",
+  "Plant_ReplacePlant",
+  "Record",
+  "RunColorPaletteMgr",
+  "RunGridSettingsDlg",
+  "RunImageComp",
+  "RunNewColorPalette",
+  "SM_Preferences",
+  "SetBinaryConstraint",
+  "SetRoofEdge",
+  "SetSingularConstraint",
+  "ShowCreateImageDialog",
+  "ShowGradientEditorDialog",
+  "ShowWebDlg",
+  "Space_AddAreaModif",
+  "TBB_OpenTBBSelDlg",
+  "TBB_UpdateOldVAATB",
+  "UpdateFeatureLayer",
+  "UpdateLayerFromFS",
+  "WallPeak"
+ ],
+ "reduced": "2026-11-20",
+ "source": "stevenmorgan94/vw-mcp docs/sweep/class-table-v2.json (MIT), Vectorworks 2027 32.0.0; reduced by scripts/import-vs-safety.py"
+}

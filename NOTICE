@@ -1,0 +1,22 @@
+vectorworks-mcp
+Copyright (c) 2026 giorgiomoroder
+MIT License (see LICENSE)
+
+This project includes data derived from the following MIT-licensed works:
+
+src/vwmcp/data/vs_types.json
+  Reduced from vs_index.json of "Keystone for Vectorworks"
+  (https://github.com/seraphinernst4/vectorworks-2d-mcp), Copyright (c) 2026
+  Seraphin Ernst, which in turn was built from the Vectorworks
+  developer-scripting vs.py stub and Function Reference, with categories and
+  descriptions from vwx-mcp (https://github.com/vicquick/vwx-mcp, Copyright
+  (c) 2026 vicquick). Only parameter names and type codes are kept here.
+
+src/vwmcp/data/vs_safety.json
+  Reduced from docs/sweep/class-table-v2.json of vw-mcp
+  (https://github.com/stevenmorgan94/vw-mcp), Copyright (c) 2026
+  stevenmorgan94: the classification of vs.* functions as safe, interactive,
+  crasher, hang or document-level, measured on Vectorworks 2027.
+
+The argument-checking proxy in vw-plugin/vwmcp/vwmcp_bridge.py follows the
+design of Keystone's CheckedVS (MIT, Seraphin Ernst).
