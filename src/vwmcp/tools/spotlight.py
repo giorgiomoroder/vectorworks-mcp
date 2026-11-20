@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
 
-from vwmcp import app
+from vwmcp import app, mvr
 from vwmcp.app import READ, WRITE, mcp, vw
 
 REPORT_FIELDS = [
@@ -147,3 +147,32 @@ def vw_lighting_device_report(
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
     return text
+
+
+@mcp.tool(annotations=READ)
+def vw_mvr_check(position: str | None = None) -> dict:
+    """Pre-flight for File > Export > Export MVR: finds the Lighting Device data
+    gaps that make an MVR (My Virtual Rig) file incomplete, without changing
+    anything. Errors (would break the export): no GDTF fixture type, no fixture
+    mode, missing or duplicate Fixture ID, no DMX patch, overlapping DMX
+    footprints in one universe, footprint past channel 512. Warnings: device
+    without position, position name with no position object, symbol with 2D
+    geometry only (exports as empty geometry), symbol missing from the document.
+    Fields this document lacks are listed under `field_missing` and their checks
+    skipped. `position` limits the check to one position. Fix findings with
+    vw_set_lighting_device_fields (Fixture ID, UniverseAddress, Position) or by
+    importing a hybrid symbol (vw_list_library_resources / vw_import_resource).
+    The export itself has no scripting call; run it from the File menu after a
+    clean check."""
+    data = vw("mvr_data")
+    if position is not None:
+        data["devices"] = [r for r in data["devices"] if r.get("Position", "") == position]
+    out = mvr.run_checks(data)
+    out["document"] = data.get("document", "")
+    out["next_steps"] = (
+        "Fix errors with vw_set_lighting_device_fields (Fixture ID, UniverseAddress, "
+        "Position, Fixture Mode) or in the Object Info palette (GDTF fixture); then "
+        "File > Export > Export MVR in Vectorworks."
+        if not out["ok"] else "No blocking issues: File > Export > Export MVR in Vectorworks."
+    )
+    return out

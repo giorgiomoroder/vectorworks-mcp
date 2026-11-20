@@ -52,6 +52,16 @@ menu command gets a fresh Python state (module globals don't persist).
 - `LDevice_GetParamStr(h, 0, name)` is the wrong signature (Script Errors,
   returns `""`). Real signature unknown.
 
+## MVR pre-flight (not run live, 2026-11-20)
+
+- `vwlib.mvr_data` reads the MVR-relevant Lighting Device fields that exist in
+  the document (`ld_field_names`), so `Fixture ID`, `GDTF Fixture Name`,
+  `Fixture Mode`, `GDTF Type ID` are assumed names until checked on 2026 and
+  2027; absent ones come back as `field_missing`.
+- `vs.GetSymbolType(symdef)` is assumed to return 0 (2D only), 1 (3D), 2
+  (hybrid) as the VectorScript reference says; `vw_mvr_check` flags 0.
+  Verify on a fixture symbol and on a plain 2D symbol.
+
 ## Drawing and 3D
 
 - Walls from `vs.Wall(...)` have one component; `SetWallThickness` and

@@ -63,7 +63,7 @@ DEFAULT_APP = os.environ.get("VWMCP_APP", f"Vectorworks {VW_VERSION}")
 TOOL_GROUPS = {
     "spotlight": [
         "vw_list_lighting_devices", "vw_set_lighting_device_fields", "vw_list_positions",
-        "vw_lighting_device_report", "vw_insert_lighting_devices",
+        "vw_lighting_device_report", "vw_insert_lighting_devices", "vw_mvr_check",
     ],
     "stage": [
         "vw_insert_truss_run", "vw_list_truss", "vw_insert_stage_decks", "vw_insert_stage_steps",
