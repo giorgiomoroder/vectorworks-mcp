@@ -144,6 +144,7 @@ uvx --from git+https://github.com/giorgiomoroder/vectorworks-mcp vwmcp doctor
 | `vw_exec_file` | Same as `vw_exec_python`, for a script file on the Mac |
 | `vw_lint` | Check Python for Vectorworks without running it: syntax, wrong `vs.*` argument counts, deprecated calls (the things that open the blocking "Script Errors" dialog). `vw_exec_python` runs this check first |
 | `vw_screenshot` | The document window as an image (plus window geometry and any dialog or open menu in front); works even while a dialog blocks the bridge |
+| `vw_doctor` | Setup check from inside Claude: bridge, menu command file, Claude configs, process, stale files, log; `fix=True` reinstalls a missing bridge |
 | `vw_vs_lookup` | Search the `vs.*` API of *your* Vectorworks, with signatures |
 
 ## Your drawing data and NDAs
@@ -214,6 +215,7 @@ When reporting a problem, please use the
 | "did not pick up the job" | Open a drawing, close any dialog or open menu (a right-click menu counts), and check **MCP Run Job** is in a menu (step 2, part 4). Run it once by hand; it should do nothing silently. |
 | "is not running" / "still starting" | Open Vectorworks and wait a few seconds. |
 | A "Script Errors" window in Vectorworks | Usually raw Python calling a `vs` function with the wrong arguments. Click OK; ask Claude to check the signature with `vw_vs_lookup`. |
+| Nothing works and you don't know why | Ask Claude to "check the Vectorworks MCP setup" (`vw_doctor`; with fix it reinstalls a missing bridge). It never touches Vectorworks itself. |
 | `vw_ping` warns about bridge version | Re-run the installer (or `uvx --from git+https://github.com/giorgiomoroder/vectorworks-mcp vwmcp install-plugin`). |
 | Nothing happens, no macOS permission prompt | System Settings ▸ Privacy & Security ▸ Automation: allow Claude (or Terminal) to control Vectorworks 2026. |
 | `vwmcp doctor` says several Vectorworks versions are installed | Run the installer once per version you use (`VW_VERSION=2027 bash install-macos.sh`); each server entry then names its version. |

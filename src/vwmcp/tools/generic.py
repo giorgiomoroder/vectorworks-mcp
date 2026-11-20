@@ -74,6 +74,47 @@ def vw_ping() -> dict:
         )
     if warnings:
         out["warning"] = " ".join(warnings)
+    try:
+        out["documents"] = documents.list_documents()["documents"]
+    except Exception as e:  # noqa: BLE001  (AppleScript trouble must not fail a ping)
+        out["documents_error"] = str(e)
+    return out
+
+
+@mcp.tool(annotations=WRITE)
+def vw_doctor(fix: bool = False) -> dict:
+    """Check this Vectorworks MCP setup without touching Vectorworks: bridge
+    installed in the right Plug-ins folder and up to date, the 'MCP Run Job'
+    command file present, Claude Desktop / Claude Code configured for this
+    version, Vectorworks running, stale job files, recent log errors. Each check
+    is ok / not ok / None (could not check here) with a fix line. With fix=True
+    it also removes stale job files and, when the bridge is missing or outdated,
+    installs it into the user's Vectorworks Plug-ins folder (the only file it
+    writes outside the server's own folder) and reports the one manual step
+    left (dragging 'MCP Run Job' into a menu). Then restart Vectorworks and
+    call vw_ping. Use this first when vw_ping fails."""
+    from vwmcp import doctor, install
+
+    root = app.get_bridge().root
+    checks = doctor.run_checks(root=root, fix=fix)
+    out: dict[str, Any] = {}
+    bridge = next((c for c in checks if c.name == "bridge"), None)
+    if fix and bridge is not None and bridge.ok is False:
+        target = install.plugin_dir(config.VW_VERSION)
+        out["installed"] = install.install_plugin(target, home=root)
+        checks = doctor.run_checks(root=root, fix=False)
+    out["ok"] = all(c.ok is not False for c in checks)
+    out["checks"] = [{"name": c.name, "ok": c.ok, "detail": c.detail, "fix": c.fix} for c in checks]
+    if "installed" in out:
+        out["next_step"] = (f"Bridge installed. {install.MENU_STEP} Quit and reopen Vectorworks so it "
+                            "loads the command, then call vw_ping.")
+    elif not out["ok"]:
+        out["next_step"] = ("Apply the fix lines above; vw_doctor(fix=True) installs a missing or "
+                            "outdated bridge and removes stale files. Not checked here: whether "
+                            "'MCP Run Job' is in a menu and the macOS Automation permission "
+                            "(vw_ping tests those).")
+    else:
+        out["next_step"] = "Setup looks fine. If vw_ping still fails, check vw_screenshot for a dialog in front."
     return out
 
 

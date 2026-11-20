@@ -26,6 +26,10 @@ Tools for a live Vectorworks session (Spotlight-focused). This server talks
 to "{config.DEFAULT_APP}" only; every call runs inside that app's open
 document via the "MCP Run Job" menu command.
 
+- Start a session with vw_list_documents (or vw_ping, which lists them too):
+  several documents are often open and the user switches between them. Name
+  the target on every write with document=; the write is refused if another
+  document is active. Test writes belong on a throwaway document.
 - Vectorworks merges back-to-back MCP edits into one Cmd-Z step, so to undo
   exactly one tool call use vw_revert_last (works for typed write tools).
 - Objects are identified by UUID (stable across calls); never cache handles.

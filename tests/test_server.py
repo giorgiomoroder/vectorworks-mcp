@@ -52,6 +52,15 @@ def bridge(root, vs, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_applescript(monkeypatch):
+    """vw_ping lists the open documents with AppleScript; never run it in tests."""
+    from vwmcp import documents
+
+    monkeypatch.setattr(documents, "list_documents",
+                        lambda: {"documents": ["Plot.vwx", "Other.vwx"], "active": "Plot.vwx", "paths": {}})
+
+
+@pytest.fixture(autouse=True)
 def journal(tmp_path, monkeypatch):
     from vwmcp.journal import Journal
 
@@ -170,3 +179,83 @@ def test_exec_file_missing_path_is_a_tool_error(tmp_path):
         server.vw_exec_file(str(tmp_path / "nope.py"))
 
 
+
+
+def test_ping_lists_open_documents():
+    out = server.vw_ping()
+    assert out["documents"] == ["Plot.vwx", "Other.vwx"]
+    assert out["document"] == "Plot.vwx"
+
+
+def test_ping_document_listing_failure_is_soft(monkeypatch):
+    from vwmcp import documents
+
+    def boom():
+        raise documents.DocumentsError("osascript failed")
+
+    monkeypatch.setattr(documents, "list_documents", boom)
+    out = server.vw_ping()
+    assert "documents" not in out
+    assert "osascript failed" in out["documents_error"]
+    assert out["document"] == "Plot.vwx"
+
+
+def test_instructions_tell_claude_to_check_documents_first():
+    assert "vw_list_documents" in app.INSTRUCTIONS
+    assert "document=" in app.INSTRUCTIONS
+
+
+# ---- vw_doctor ------------------------------------------------------------------
+
+def _checks(bridge_ok=True):
+    from vwmcp.doctor import Check
+
+    return [Check("version", True, "Vectorworks 2026"),
+            Check("bridge", bridge_ok, "0.1.0 at /x" if bridge_ok else "not installed at /x",
+                  "" if bridge_ok else "Run the installer again, or: vwmcp install-plugin"),
+            Check("vectorworks", None, "not running")]
+
+
+def test_doctor_reports_checks_without_fixing(monkeypatch):
+    from vwmcp import doctor
+
+    seen = {}
+
+    def fake_run(**kw):
+        seen.update(kw)
+        return _checks(bridge_ok=False)
+
+    monkeypatch.setattr(doctor, "run_checks", fake_run)
+    out = server.vw_doctor()
+    assert seen["fix"] is False
+    assert out["ok"] is False
+    assert out["checks"][1] == {"name": "bridge", "ok": False, "detail": "not installed at /x",
+                                "fix": "Run the installer again, or: vwmcp install-plugin"}
+    assert out["checks"][2]["ok"] is None
+    assert "installed" not in out
+    assert "fix=True" in out["next_step"]
+
+
+def test_doctor_fix_installs_missing_bridge(monkeypatch, tmp_path):
+    from vwmcp import doctor, install
+
+    calls = []
+    monkeypatch.setattr(doctor, "run_checks", lambda **kw: (calls.append(("run", kw["fix"])) or _checks(bridge_ok=False)) if not calls else _checks(True))
+    monkeypatch.setattr(install, "plugin_dir", lambda version: tmp_path / "Plug-ins" / "vwmcp")
+    monkeypatch.setattr(install, "install_plugin", lambda target, home=None: calls.append(("install", target, home)) or "Installed")
+    out = server.vw_doctor(fix=True)
+    assert calls[0] == ("run", True)
+    assert calls[1][0] == "install" and calls[1][1] == tmp_path / "Plug-ins" / "vwmcp"
+    assert calls[1][2] == app.get_bridge().root
+    assert out["installed"] == "Installed"
+    assert out["ok"] is True  # re-checked after the install
+    assert install.MENU_STEP in out["next_step"]
+
+
+def test_doctor_fix_does_not_install_when_bridge_is_fine(monkeypatch):
+    from vwmcp import doctor, install
+
+    monkeypatch.setattr(doctor, "run_checks", lambda **kw: _checks(True))
+    monkeypatch.setattr(install, "install_plugin", lambda *a, **k: pytest.fail("must not install"))
+    out = server.vw_doctor(fix=True)
+    assert out["ok"] is True and "installed" not in out
