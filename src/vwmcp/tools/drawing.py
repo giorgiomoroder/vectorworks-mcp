@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
 
-from vwmcp import app, library
+from vwmcp import app, classes, library
 from vwmcp.app import READ, WRITE, mcp, vw
 
 
@@ -130,6 +130,43 @@ def vw_create_class(name: str, document: str | None = None) -> dict:
     app.require_document(document)
     out = vw("create_class", name=name)
     return _journal(out, "vw_create_class", [{"op": "class", "name": name}])
+
+
+@mcp.tool(annotations=WRITE)
+def vw_apply_class_standard(
+    standard: str = "spotlight", only: list[str] | None = None, overwrite: bool = False,
+    document: str | None = None,
+) -> dict:
+    """Give the document a consistent class set with colours and line weights,
+    so plots look tidy and layers can be filtered: the "spotlight" standard has
+    Lighting-Instruments / -Labels / -Positions / -Focus Points / -Cables,
+    Rigging-Truss / -Hoists, Stage-Decks / -Steps, Soft Goods, Audio, Video,
+    Scenery, People, Venue-Architecture / -Seating, Notes, Dimensions. Missing
+    classes are created and styled; existing ones are left alone unless
+    overwrite=True (then their pen, fill and line weight are changed and
+    recorded for revert). `only` limits it to names or prefixes, e.g.
+    ["Lighting", "Rigging-Truss"]. Afterwards use vw_create_pio / insert tools
+    with class_name=, or move objects into classes with vw_set_record. One
+    revertible step (created classes are deleted, restyled ones restored).
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
+    try:
+        spec = classes.load(standard)
+        existing = vw("class_attrs", names=[c["name"] for c in spec])
+        todo = classes.plan(spec, existing, only=only, overwrite=overwrite)
+    except (KeyError, ValueError) as e:
+        raise ToolError(str(e).strip("'\"")) from e
+    if not todo["create"] and not todo["restyle"]:
+        return {"standard": standard, "created": [], "restyled": [], "unchanged": todo["unchanged"],
+                "note": "Nothing to do" + (": all classes exist (overwrite=True restyles them)." if not overwrite else ".")}
+    out = vw("apply_class_attrs", create=todo["create"], restyle=todo["restyle"])
+    before = out.pop("before", {})
+    ops = [{"op": "class", "name": n} for n in out["created"]]
+    ops += [{"op": "class_attrs", "name": n, "before": before[n]} for n in out["restyled"] if n in before]
+    out["unchanged"] = todo["unchanged"]
+    out["standard"] = standard
+    return _journal(out, "vw_apply_class_standard", ops)
 
 
 @mcp.tool(annotations=WRITE)

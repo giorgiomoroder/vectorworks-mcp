@@ -73,6 +73,7 @@ TOOL_GROUPS = {
     "plan": [
         "vw_export_geometry", "vw_render_layers", "vw_duplicate_layer", "vw_set_vertices",
     ],
+    "drawing": ["vw_apply_class_standard"],
 }
 
 

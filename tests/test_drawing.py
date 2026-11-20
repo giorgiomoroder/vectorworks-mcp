@@ -721,3 +721,39 @@ def test_soft_goods_rejects_bad_input(doc, fake_vs):
         drawing.vw_insert_soft_goods([[0, 0], [10, 0]], 100, opening_width=-1)
     assert not doc.events or not [e for e in doc.events if e[0] == "openpoly"]
     assert not [o for o in doc.objects.values() if o["type"] == 21]
+
+
+# ---- vw_apply_class_standard ----------------------------------------------------
+
+def test_apply_class_standard_journals_created_and_restyled(fake, monkeypatch):
+    before = {"exists": True, "pen": [0, 0, 0], "fill": None, "line_weight": 5, "use_graphic": True}
+    fake_attrs = {"Lighting-Instruments": before}
+    calls = []
+
+    def fake_vw(fn, **kw):
+        calls.append((fn, kw))
+        if fn == "class_attrs":
+            return {n: fake_attrs.get(n, {"exists": False}) for n in kw["names"]}
+        if fn == "apply_class_attrs":
+            return {"document": "Plot.vwx", "created": [c["name"] for c in kw["create"]],
+                    "restyled": [c["name"] for c in kw["restyle"]],
+                    "before": {c["name"]: fake_attrs[c["name"]] for c in kw["restyle"]}}
+        if fn == "current_document":
+            return "Plot.vwx"
+        return fake(fn, **kw)
+
+    for mod in (app, generic, drawing):
+        monkeypatch.setattr(mod, "vw", fake_vw)
+    out = drawing.vw_apply_class_standard("spotlight", only=["Lighting-Instruments", "Rigging-Truss"], overwrite=True)
+    assert out["created"] == ["Rigging-Truss"] and out["restyled"] == ["Lighting-Instruments"]
+    generic.vw_revert_last()
+    fn, kw = calls[-1]
+    assert fn == "revert"
+    assert {"op": "class", "name": "Rigging-Truss"} in kw["ops"]
+    attrs_op = [o for o in kw["ops"] if o["op"] == "class_attrs"][0]
+    assert attrs_op["name"] == "Lighting-Instruments" and attrs_op["before"] == before
+
+
+def test_apply_class_standard_unknown_name(fake):
+    with pytest.raises(ToolError, match="spotlight"):
+        drawing.vw_apply_class_standard("nope")

@@ -1,0 +1,241 @@
+{
+ "spotlight": {
+  "description": "Spotlight-style class set for light plots and stage drawings: pen/fill RGB 0-255, line weights in mils.",
+  "classes": [
+   {
+    "name": "Lighting-Instruments",
+    "pen": [
+     0,
+     0,
+     0
+    ],
+    "fill": [
+     255,
+     255,
+     255
+    ],
+    "line_weight": 7,
+    "description": "Lighting Devices (fixtures)"
+   },
+   {
+    "name": "Lighting-Labels",
+    "pen": [
+     0,
+     0,
+     0
+    ],
+    "fill": null,
+    "line_weight": 3,
+    "description": "Label legends: unit, channel, color, purpose text"
+   },
+   {
+    "name": "Lighting-Positions",
+    "pen": [
+     0,
+     51,
+     153
+    ],
+    "fill": null,
+    "line_weight": 14,
+    "description": "Light Position Objs, pipes, ladders"
+   },
+   {
+    "name": "Lighting-Focus Points",
+    "pen": [
+     204,
+     0,
+     153
+    ],
+    "fill": null,
+    "line_weight": 5,
+    "description": "Focus points"
+   },
+   {
+    "name": "Lighting-Cables",
+    "pen": [
+     230,
+     120,
+     0
+    ],
+    "fill": null,
+    "line_weight": 5,
+    "description": "Cable runs and distro"
+   },
+   {
+    "name": "Rigging-Truss",
+    "pen": [
+     64,
+     64,
+     64
+    ],
+    "fill": [
+     200,
+     200,
+     200
+    ],
+    "line_weight": 10,
+    "description": "TrussItem runs, corners, towers"
+   },
+   {
+    "name": "Rigging-Hoists",
+    "pen": [
+     200,
+     0,
+     0
+    ],
+    "fill": null,
+    "line_weight": 10,
+    "description": "Hoists, bridles, pickups"
+   },
+   {
+    "name": "Stage-Decks",
+    "pen": [
+     90,
+     60,
+     30
+    ],
+    "fill": [
+     222,
+     196,
+     160
+    ],
+    "line_weight": 10,
+    "description": "Stage Deck platforms and risers"
+   },
+   {
+    "name": "Stage-Steps",
+    "pen": [
+     90,
+     60,
+     30
+    ],
+    "fill": [
+     235,
+     215,
+     185
+    ],
+    "line_weight": 7,
+    "description": "Stage Steps and Stage Ramps"
+   },
+   {
+    "name": "Soft Goods",
+    "pen": [
+     102,
+     0,
+     0
+    ],
+    "fill": [
+     153,
+     0,
+     0
+    ],
+    "line_weight": 14,
+    "description": "Curtains, borders, pipe-and-drape"
+   },
+   {
+    "name": "Audio",
+    "pen": [
+     0,
+     102,
+     102
+    ],
+    "fill": [
+     170,
+     220,
+     220
+    ],
+    "line_weight": 7,
+    "description": "PA, monitors, backline amps"
+   },
+   {
+    "name": "Video",
+    "pen": [
+     0,
+     0,
+     153
+    ],
+    "fill": [
+     190,
+     190,
+     240
+    ],
+    "line_weight": 7,
+    "description": "LED walls, projectors, screens"
+   },
+   {
+    "name": "Scenery",
+    "pen": [
+     0,
+     102,
+     0
+    ],
+    "fill": [
+     190,
+     230,
+     190
+    ],
+    "line_weight": 7,
+    "description": "Set pieces and props"
+   },
+   {
+    "name": "People",
+    "pen": [
+     120,
+     120,
+     120
+    ],
+    "fill": null,
+    "line_weight": 3,
+    "description": "Band members, crew, audience figures"
+   },
+   {
+    "name": "Venue-Architecture",
+    "pen": [
+     0,
+     0,
+     0
+    ],
+    "fill": [
+     240,
+     240,
+     240
+    ],
+    "line_weight": 20,
+    "description": "Walls, stage edge, house structure"
+   },
+   {
+    "name": "Venue-Seating",
+    "pen": [
+     128,
+     128,
+     128
+    ],
+    "fill": null,
+    "line_weight": 3,
+    "description": "Seating and barriers"
+   },
+   {
+    "name": "Notes",
+    "pen": [
+     200,
+     0,
+     0
+    ],
+    "fill": null,
+    "line_weight": 3,
+    "description": "Callouts and notes"
+   },
+   {
+    "name": "Dimensions",
+    "pen": [
+     0,
+     0,
+     0
+    ],
+    "fill": null,
+    "line_weight": 3,
+    "description": "Dimension objects"
+   }
+  ]
+ }
+}

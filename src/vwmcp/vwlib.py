@@ -217,7 +217,7 @@ def revert(ops):
             kind = "layer"
         if kind == "layer":
             h = vs.GetLayerByName(op["name"])
-        elif kind == "class":
+        elif kind == "class" or kind == "class_attrs":
             h = op["name"] if op["name"] in list_classes() else None
         elif kind == "resource":
             h = vs.GetObject(op["name"])
@@ -239,6 +239,9 @@ def revert(ops):
         elif kind == "class":
             vs.DelClass(op["name"])
             deleted += 1
+        elif kind == "class_attrs":
+            _set_class_attrs(op["name"], op["before"])
+            restored += 1
         elif kind == "move":
             _move(h, -op["dx"], -op["dy"], -op.get("dz", 0.0))
             moved += 1
@@ -506,6 +509,64 @@ def create_class(name):
     if prev:
         vs.NameClass(prev)
     return {"document": current_document(), "name": name}
+
+
+def _rgb255(index):
+    r, g, b = vs.ColorIndexToRGB(index)
+    return [int(round(v / 257.0)) for v in (r, g, b)]
+
+
+def _color_index(rgb):
+    return vs.RGBToColorIndex(*[int(v) * 257 for v in rgb])
+
+
+def class_attrs(names):
+    """Pen/fill colour (RGB 0-255), fill pattern, line weight (mils) and
+    use-graphic flag of classes, keyed by name; {"exists": False} for unknown
+    ones. Not run live yet (2026-11-20): GetClFPat 0 is taken as 'no fill'."""
+    have = set(list_classes())
+    out = {}
+    for n in names:
+        if n not in have:
+            out[n] = {"exists": False}
+            continue
+        pat = vs.GetClFPat(n)
+        out[n] = {"exists": True, "pen": _rgb255(vs.GetClPenFore(n)),
+                  "fill": _rgb255(vs.GetClFillFore(n)) if pat else None,
+                  "fill_pattern": pat, "line_weight": vs.GetClLW(n),
+                  "use_graphic": bool(vs.GetClUseGraphic(n))}
+    return out
+
+
+def _set_class_attrs(name, spec):
+    """spec: pen [r,g,b] 0-255, fill [r,g,b] or None, line_weight mils;
+    optional fill_pattern / use_graphic (used by revert)."""
+    vs.SetClPenFore(name, _color_index(spec["pen"]))
+    if spec.get("fill") is not None:
+        vs.SetClFillFore(name, _color_index(spec["fill"]))
+        vs.SetClFPat(name, spec.get("fill_pattern") or 1)  # 1 = solid
+    else:
+        vs.SetClFPat(name, 0)  # 0 = no fill
+    vs.SetClLW(name, int(spec["line_weight"]))
+    vs.SetClUseGraphic(name, bool(spec.get("use_graphic", True)))
+
+
+def apply_class_attrs(create, restyle):
+    """Create the `create` classes (keeping the user's active class) and style
+    both lists. Returns what the revert needs: created names, before-attrs of
+    the restyled ones."""
+    prev = _str(vs.ActiveClass())
+    before = class_attrs([c["name"] for c in restyle])
+    created = []
+    for c in create:
+        vs.NameClass(c["name"])  # creates and activates (vs-notes)
+        created.append(c["name"])
+    if created and prev:
+        vs.NameClass(prev)
+    for c in create + restyle:
+        _set_class_attrs(c["name"], c)
+    return {"document": current_document(), "created": created,
+            "restyled": [c["name"] for c in restyle], "before": before}
 
 
 def _handles(uuids):
