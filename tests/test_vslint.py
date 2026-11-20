@@ -87,7 +87,7 @@ def test_exec_python_is_linted_before_sending(monkeypatch):
 
     sent = []
     monkeypatch.setattr(app, "vw", lambda fn, **kw: None)
-    monkeypatch.setattr(generic, "_run_raw", lambda code, timeout=None: sent.append(code) or {"ok": True, "value": 1})
+    monkeypatch.setattr(generic, "_run_raw", lambda code, timeout=None, **kw: sent.append(code) or {"ok": True, "value": 1})
     with pytest.raises(ToolError, match="Script Errors"):
         generic.vw_exec_python("vs.GetLS(h)", modifies_document=False)
     with pytest.raises(ToolError, match="SyntaxError"):
@@ -107,3 +107,37 @@ def test_vw_lint_tool_reports(tmp_path):
     bad.write_text("vs.ActLayer(1)\n")
     rep = generic.vw_lint(path=str(bad))
     assert not rep["ok"] and rep["errors"][0]["line"] == 1
+
+
+# ------------------------------------------------------------ safety classes
+
+
+def test_lint_refuses_known_crashers_and_hangs():
+    r = vslint.lint("vs.UprString('x')\nvs.RetrieveOpenGLPrefs()")
+    msgs = " ".join(e["message"] for e in r["errors"])
+    assert "crashes Vectorworks" in msgs and "hangs Vectorworks" in msgs
+
+
+def test_lint_refuses_dialog_openers_unless_allowed():
+    assert any("dialog" in e["message"] for e in vslint.lint("vs.EditProperties(h)")["errors"])
+    assert vslint.lint("vs.EditProperties(h)", allow_dialogs=True)["errors"] == []
+
+
+def test_lint_warns_about_document_level_and_wrong_type_crashers():
+    r = vslint.lint("vs.ProgressDlgYield(1)\nvs.ApplyLightInfoRecord(h, 'x')")
+    msgs = " ".join(w["message"] for w in r["warnings"])
+    assert "ProgressDlgYield" in msgs and "wrong object type" in msgs
+
+
+def test_safety_and_types_lookup():
+    assert vslint.safety_of("UprString") == "crash"
+    assert vslint.safety_of("Rect") is None
+    assert vslint.types_of("Rect") == {"t": "PP", "a": "p1:POINT, p2:POINT"}
+
+
+def test_vs_lookup_adds_types_and_safety(monkeypatch):
+    monkeypatch.setattr(server, "_run_raw", lambda code, **kw: {"ok": True, "value": [
+        {"name": "Rect", "doc": "..."}, {"name": "UprString", "doc": "..."}]})
+    hits = server.vw_vs_lookup("rect")
+    assert hits[0]["types"]["t"] == "PP" and hits[0]["safety"] is None
+    assert hits[1]["safety"] == "crash"

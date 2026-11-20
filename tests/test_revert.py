@@ -37,7 +37,7 @@ def fake(tmp_path, monkeypatch):
     for mod in (app, generic, spotlight):
         monkeypatch.setattr(mod, "vw", f)
     monkeypatch.setattr(app, "get_journal", lambda: Journal(tmp_path / "j.jsonl"))
-    monkeypatch.setattr(generic, "_run_raw", lambda code, timeout=None: {"ok": True, "value": None, "stdout": "", "error": None, "traceback": None})
+    monkeypatch.setattr(generic, "_run_raw", lambda code, timeout=None, **kw: {"ok": True, "value": None, "stdout": "", "error": None, "traceback": None})
 
     def call_result(bridge, fn, timeout=None, **kw):
         assert fn == "exec_tracked"

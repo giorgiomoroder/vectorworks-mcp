@@ -314,3 +314,58 @@ def test_screenshot_mapping_failure_is_soft(monkeypatch, tmp_path):
     assert "mapping" not in meta and "not answered" in meta["mapping_error"]
     with pytest.raises(ToolError, match="mapping=True"):
         server.vw_point_to_world(1, 1)
+
+
+# ------------------------------------------------- document guard, allow_dialogs
+
+from mcp.server.mcpserver.exceptions import ToolError
+
+
+@pytest.fixture
+def bridge_with_fake(bridge, vs):
+    return bridge, vs
+
+
+@pytest.fixture(autouse=True)
+def clear_document_guard():
+    """Tests set app.DOCUMENT in the main thread's context; never let it leak."""
+    yield
+    app.DOCUMENT.set(None)
+
+
+def test_require_document_guards_every_later_call_in_the_request(bridge_with_fake):
+    bridge, fake_vs = bridge_with_fake
+    fake_vs.GetFPathName = lambda: "/x/Plot.vwx"
+    bridge.run("1")  # learn the version
+    app.require_document("Plot")  # matches: no error, sets the guard
+    assert app.DOCUMENT.get() == {"name": "Plot"}
+    assert app.vw("current_document") == "Plot.vwx"
+    # another document: the pre-check refuses with a ToolError naming both
+    with pytest.raises(ToolError, match="Plot.vwx"):
+        app.require_document("Other")
+
+
+def test_require_document_without_pre_check_fails_inside_the_job(bridge_with_fake):
+    bridge, fake_vs = bridge_with_fake
+    fake_vs.GetFPathName = lambda: "/x/Plot.vwx"
+    bridge.run("1")
+    app.DOCUMENT.set({"name": "Other"})  # as if the user switched after the pre-check
+    with pytest.raises(ToolError, match="not 'Other'"):
+        app.vw("current_document")
+
+
+def test_exec_python_can_allow_dialogs(bridge_with_fake, monkeypatch):
+    bridge, fake_vs = bridge_with_fake
+    seen = {}
+
+    def fake_run(code, **kw):
+        seen.update(kw)
+        return {"ok": True, "stdout": "", "value": {"created": [], "document": "Plot.vwx",
+                                                   "value": None, "stdout": ""}}
+
+    monkeypatch.setattr(bridge, "run", fake_run)
+    server.vw_exec_python("vs.EditProperties(None)", allow_dialogs=True)  # tracked path (exec_tracked)
+    assert seen["allow_dialogs"] is True
+    seen.clear()
+    server.vw_exec_python("1", modifies_document=False, allow_dialogs=True)  # raw path (_run_raw)
+    assert seen["allow_dialogs"] is True

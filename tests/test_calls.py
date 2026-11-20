@@ -41,3 +41,26 @@ def test_vw_side_exception_becomes_vwerror_with_traceback(bridge):
     with pytest.raises(calls.VWError) as e:
         calls.call(bridge, "handle", uuid="nope")
     assert "GetObjectByUuid" in e.value.traceback or "AttributeError" in str(e.value)
+
+
+# ------------------------------------------------- libraries by reference, document
+
+# tests/ has no __init__.py: sibling test modules import by bare name.
+from test_client import FakeExecutor, make_bridge
+
+
+def test_vwlib_goes_by_reference_once_the_bridge_version_is_known(root, fake_vs):
+    b = make_bridge(root, FakeExecutor(root, fake_vs))
+    assert calls.call(b, "current_document") == "Plot.vwx"  # first call: inline source
+    assert b.supports_libs()
+    assert calls.call(b, "current_document") == "Plot.vwx"  # second: by reference
+    libs = list((root / "lib").glob("*.py"))
+    assert len(libs) == 1 and "def current_document" in libs[0].read_text()
+
+
+def test_call_passes_the_document_to_the_job(root, fake_vs):
+    from vwmcp.client import WrongDocument
+    fake_vs.GetFPathName = lambda: "/x/Plot.vwx"
+    b = make_bridge(root, FakeExecutor(root, fake_vs))
+    with pytest.raises(WrongDocument):
+        calls.call(b, "current_document", document={"name": "Other"})

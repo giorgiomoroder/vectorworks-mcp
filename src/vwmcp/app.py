@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import functools
 from importlib import resources
 from pathlib import Path
@@ -11,8 +12,16 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
 from vwmcp import calls, config
-from vwmcp.client import Bridge, BridgeError
+from vwmcp.client import Bridge, BridgeError, WrongDocument
 from vwmcp.journal import Journal
+
+# The document the current tool call works in ({"name", "path"} or None).
+# Set by require_document; vw() names it in every job so the bridge refuses
+# to run in another document (the user may switch documents between two of
+# our jobs). Each MCP request runs in its own task (and sync tools in a
+# worker thread with a copy of that context), so the value never leaks into
+# the next tool call.
+DOCUMENT: contextvars.ContextVar[dict | None] = contextvars.ContextVar("vwmcp_document", default=None)
 
 EXPECTED_BRIDGE_VERSION = "0.2.0"  # bridge 0.2: checked vs, document guard, libs by sha
 # Vectorworks major versions this release was tested against (31 = 2026).
@@ -55,9 +64,14 @@ def get_journal() -> Journal:
 
 
 def vw(fn: str, **kwargs):
-    """Call a vwlib helper, mapping failures to MCP tool errors."""
+    """Call a vwlib helper, mapping failures to MCP tool errors. Carries the
+    request's document (require_document) so the bridge checks it first."""
     try:
-        return calls.call(get_bridge(), fn, **kwargs)
+        return calls.call(get_bridge(), fn, document=DOCUMENT.get(), **kwargs)
+    except WrongDocument as e:
+        want = (DOCUMENT.get() or {}).get("name", "")
+        raise ToolError(f"Not done: {e} Bring {want!r} to the front (vw_switch_document) and "
+                        "try again.") from e
     except calls.VWError as e:
         raise ToolError(f"{e}\n\n{e.traceback}".strip()) from e
     except BridgeError as e:
@@ -86,10 +100,14 @@ def _doc_key(name: str) -> str:
 
 
 def require_document(document: str | None) -> None:
-    """Refuse a write when `document` is given and another document is active."""
+    """Refuse a write when `document` is given and another document is active,
+    and make every later call of this request name the document so the
+    bridge checks again right before running each job."""
+    DOCUMENT.set(None)
     if not document:
         return
     current = vw("current_document")
     if _doc_key(current) != _doc_key(document):
         raise ToolError(f"Not done: the active document is {current!r}, not {document!r}. "
                         "Bring the right one to the front (vw_switch_document) and try again.")
+    DOCUMENT.set({"name": document})

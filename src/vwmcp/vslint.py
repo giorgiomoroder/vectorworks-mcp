@@ -23,6 +23,13 @@ converts "Definition: ... vs.Name(a, b)" into data/vs_api_<year>.json
 (keys: signatures {name: [params]}, deprecated {name: replacement},
 known_without_signature [names]). The table of the server's version is
 used when bundled, else the newest one.
+
+Two more tables (see NOTICE for their origin): data/vs_safety.json lists
+functions a published sweep found to crash or hang Vectorworks (error), to
+open a dialog (error unless allow_dialogs), or to change document state in a
+flagged way (warning), plus functions that crash on a handle of the wrong
+object type (warning); data/vs_types.json has the parameter type codes the
+bridge checks at call time (`types_of`, shown by vw_vs_lookup).
 """
 
 from __future__ import annotations
@@ -50,6 +57,34 @@ def load_api(year: str | None = None) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+@lru_cache(maxsize=1)
+def load_safety() -> dict:
+    path = DATA_DIR / "vs_safety.json"
+    if not path.exists():
+        return {"crash": [], "hang": [], "document_level": [], "interactive": [], "arg_check": {}}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+@lru_cache(maxsize=1)
+def load_types() -> dict:
+    path = DATA_DIR / "vs_types.json"
+    return json.loads(path.read_text(encoding="utf-8")).get("f", {}) if path.exists() else {}
+
+
+def safety_of(name: str) -> str | None:
+    """'crash', 'hang', 'interactive', 'document_level', or None (safe or unknown)."""
+    s = load_safety()
+    for key in ("crash", "hang", "interactive", "document_level"):
+        if name in s.get(key, ()):
+            return key
+    return None
+
+
+def types_of(name: str) -> dict | None:
+    """{"t": type codes, "a": "name:TYPE, ..."} the bridge checks, or None."""
+    return load_types().get(name)
+
+
 def _vs_aliases(tree: ast.AST) -> set[str]:
     names = {"vs"}
     for node in ast.walk(tree):
@@ -66,9 +101,11 @@ def _range(params: list[str]) -> tuple[int, int]:
     return n, n + 2 * k
 
 
-def lint(code: str, filename: str = "<code>", year: str | None = None) -> dict:
+def lint(code: str, filename: str = "<code>", year: str | None = None,
+         allow_dialogs: bool = False) -> dict:
     """Check code. Returns {"errors": [...], "warnings": [...]}; each item is
-    {"line": int, "message": str}. Errors would likely block Vectorworks."""
+    {"line": int, "message": str}. Errors would likely block or crash
+    Vectorworks. allow_dialogs: do not treat dialog-opening functions as errors."""
     errors, warnings = [], []
     try:
         tree = ast.parse(code, filename, "exec")
@@ -93,6 +130,24 @@ def lint(code: str, filename: str = "<code>", year: str | None = None) -> dict:
             hint = f" Use vs.{dep[name]} instead." if dep[name] else ""
             errors.append({"line": line, "message": f"vs.{name} is deprecated and generates an error.{hint}"})
             continue
+        reason = safety_of(name)
+        if reason == "crash":
+            errors.append({"line": line, "message": f"vs.{name} crashes Vectorworks (safety sweep); not sent."})
+            continue
+        if reason == "hang":
+            errors.append({"line": line, "message": f"vs.{name} hangs Vectorworks (safety sweep); not sent."})
+            continue
+        if reason == "interactive" and not allow_dialogs:
+            errors.append({"line": line, "message": f"vs.{name} opens a dialog that blocks all further jobs; "
+                           "pass allow_dialogs=True if that is what you want."})
+            continue
+        if reason == "document_level":
+            warnings.append({"line": line, "message": f"vs.{name} changes the document state in a way the "
+                             "safety sweep flagged (document-level); be sure."})
+        bad = load_safety().get("arg_check", {}).get(name, [])
+        if any(c.startswith("wrong-object-type") for c in bad):
+            warnings.append({"line": line, "message": f"vs.{name} crashes Vectorworks when given a handle "
+                             "of the wrong object type; check vs.GetTypeN first."})
         if known and name not in known:
             warnings.append({"line": line, "message": f"vs.{name} is not in the Vectorworks API (AttributeError)."})
             continue

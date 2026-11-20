@@ -39,9 +39,9 @@ result = [{"name": n, "doc": d} for _, n, d in _hits[: _q["limit"]]]
 """
 
 
-def _run_raw(code: str, timeout: float | None = None) -> dict:
+def _run_raw(code: str, timeout: float | None = None, allow_dialogs: bool = False) -> dict:
     try:
-        return app.get_bridge().run(code, timeout=timeout)
+        return app.get_bridge().run(code, timeout=timeout, allow_dialogs=allow_dialogs)
     except BridgeError as e:
         raise ToolError(str(e)) from e
 
@@ -121,7 +121,7 @@ def vw_doctor(fix: bool = False) -> dict:
 @mcp.tool(annotations=WRITE)
 def vw_exec_python(
     code: str, modifies_document: bool = True, timeout: float | None = None,
-    document: str | None = None, lint: bool = True,
+    document: str | None = None, lint: bool = True, allow_dialogs: bool = False,
 ) -> dict:
     """Run arbitrary Python inside Vectorworks with `vs` in scope.
 
@@ -129,35 +129,39 @@ def vw_exec_python(
     `result`), and the traceback if it raised. Vectorworks embeds Python 3.9
     (2026) or 3.14 (2027); stay 3.9-compatible to be safe. Handles are only
     valid during the call; return UUIDs (vs.GetObjectUuid) to refer to
-    objects later. A wrong vs.* signature can pop a modal "Script Errors"
-    dialog in Vectorworks instead of raising; check with vw_vs_lookup first.
+    objects later. Inside Vectorworks every vs.* call is checked first
+    (argument count and types, known crashers): a bad call raises
+    VSArgumentError / VSUnsafeError in the result instead of opening the
+    modal "Script Errors" dialog. Check signatures with vw_vs_lookup.
 
     With modifies_document=True (default) the objects the code creates are
     recorded, even if it fails halfway, and vw_revert_last deletes exactly
     those. Changes to objects that existed before (moves, attributes,
     deletions) are not revertible. Set modifies_document=False for read-only
-    code (faster, no journal entry). timeout: seconds to wait (default 30);
-    raise it for large drawing scripts.
+    code (faster, no journal entry). timeout: seconds to wait for the result
+    once Vectorworks took the job (default 120); raise it for large scripts.
 
     document: optional guard; if given and another document is active,
     nothing changes (use vw_switch_document first).
     lint (default True): the code is checked before it is sent (vw_lint).
-    Syntax errors, vs.* calls with a wrong number of arguments and
-    deprecated calls stop the call with a report instead of opening the
-    blocking Script Errors dialog; unknown vs.* names come back as
-    `lint_warnings`. lint=False skips the check (only if the check is wrong).
+    Syntax errors, vs.* calls with a wrong number of arguments, deprecated
+    calls and functions known to crash Vectorworks or open a dialog stop the
+    call with a report; unknown vs.* names come back as `lint_warnings`.
+    lint=False skips the check (only if the check is wrong).
+    allow_dialogs: let the code call vs.* functions that open a dialog (they
+    block all further jobs until the user closes it); refused by default.
     """
     app.require_document(document)
-    lint_warnings = _preflight(code, "<vw_exec_python>") if lint else []
-    out = _exec_python(code, modifies_document, timeout)
+    lint_warnings = _preflight(code, "<vw_exec_python>", allow_dialogs) if lint else []
+    out = _exec_python(code, modifies_document, timeout, allow_dialogs)
     if lint_warnings:
         out["lint_warnings"] = lint_warnings
     return out
 
 
-def _preflight(code: str, filename: str) -> list[str]:
+def _preflight(code: str, filename: str, allow_dialogs: bool = False) -> list[str]:
     """Lint code; raise ToolError on errors, return warning lines."""
-    report = vslint.lint(code, filename, year=config.VW_VERSION)
+    report = vslint.lint(code, filename, year=config.VW_VERSION, allow_dialogs=allow_dialogs)
     if report["errors"]:
         raise ToolError(
             "Not sent to Vectorworks: this would likely open the blocking Script Errors dialog.\n"
@@ -166,12 +170,14 @@ def _preflight(code: str, filename: str) -> list[str]:
     return [f"line {w['line']}: {w['message']}" for w in report["warnings"]]
 
 
-def _exec_python(code: str, modifies_document: bool, timeout: float | None) -> dict:
+def _exec_python(code: str, modifies_document: bool, timeout: float | None,
+                 allow_dialogs: bool = False) -> dict:
     if not modifies_document:
-        res = _run_raw(code, timeout)
+        res = _run_raw(code, timeout, allow_dialogs=allow_dialogs)
         return {k: res.get(k) for k in ("ok", "value", "stdout", "error", "traceback")}
     try:
-        res = calls.call_result(app.get_bridge(), "exec_tracked", timeout=timeout, code=code)
+        res = calls.call_result(app.get_bridge(), "exec_tracked", timeout=timeout,
+                                document=app.DOCUMENT.get(), allow_dialogs=allow_dialogs, code=code)
     except calls.VWError as e:
         raise ToolError(f"{e}\n\n{e.traceback}".strip()) from e
     except BridgeError as e:
@@ -203,22 +209,23 @@ def _exec_python(code: str, modifies_document: bool, timeout: float | None) -> d
 @mcp.tool(annotations=WRITE)
 def vw_exec_file(
     path: str, modifies_document: bool = True, timeout: float | None = 120,
-    document: str | None = None, lint: bool = True,
+    document: str | None = None, lint: bool = True, allow_dialogs: bool = False,
 ) -> dict:
     """Run a Python script file (a path on this Mac, e.g. in the project's
     _claude_scripts folder) inside Vectorworks, exactly like vw_exec_python
     with its contents: created objects are revertible, the file is linted
     first. Default timeout 120 s for large scripts.
     document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+    nothing changes (use vw_switch_document first).
+    allow_dialogs: as in vw_exec_python."""
     app.require_document(document)
     p = Path(path).expanduser()
     try:
         code = p.read_text(encoding="utf-8")
     except OSError as e:
         raise ToolError(f"Can't read {p}: {e}") from e
-    lint_warnings = _preflight(code, p.name) if lint else []
-    out = _exec_python(code, modifies_document, timeout)
+    lint_warnings = _preflight(code, p.name, allow_dialogs) if lint else []
+    out = _exec_python(code, modifies_document, timeout, allow_dialogs)
     if lint_warnings:
         out["lint_warnings"] = lint_warnings
     return out
@@ -457,11 +464,18 @@ def vw_set_vertices(
 def vw_vs_lookup(query: str, limit: int = 25) -> list[dict]:
     """Search the live vs.* API (names and built-in docs) of the running
     Vectorworks, e.g. "record field", "symbol insert", "LDevice". Returns
-    function names with their signature/description."""
+    function names with their signature/description, the parameter types
+    the bridge checks (`types`: "name:TYPE, ..." and codes) and `safety`
+    (None, or "crash" / "hang" / "interactive" / "document_level" from the
+    safety sweep: crash and hang are refused, interactive needs allow_dialogs)."""
     res = _run_raw(LOOKUP_CODE % __import__("json").dumps({"query": query, "limit": limit}))
     if not res["ok"]:
         raise ToolError(res["error"])
-    return res["value"]
+    hits = res["value"]
+    for hit in hits:
+        hit["types"] = vslint.types_of(hit["name"])
+        hit["safety"] = vslint.safety_of(hit["name"])
+    return hits
 
 
 @mcp.tool(annotations=READ)
