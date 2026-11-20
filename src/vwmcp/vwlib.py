@@ -287,6 +287,39 @@ def insert_symbol(name, x, y, z=None, layer=None, cls=None, rotation=0.0):
     return info
 
 
+def insert_band(members, layer=None, label=True, label_offset_mm=500.0, label_size_pt=None):
+    """Place people/backline symbols with an optional name label under each:
+    members = [{"symbol", "x", "y", "rotation", "name", "z"}]. Symbols must be
+    in the document (import them first). Labels are plain text objects,
+    centred, `label_offset_mm` below the insertion point. All-or-nothing.
+    Not run live yet (2026-11-20): TextJust/TextSize set the state for the
+    next CreateText, as the VectorScript reference says."""
+    created, out = [], []
+    try:
+        for m in members:
+            info = insert_symbol(m["symbol"], m["x"], m["y"], z=m.get("z"), layer=layer,
+                                 rotation=m.get("rotation", 0.0))
+            created.append(handle(info["uuid"]))
+            row = {"name": m.get("name") or m["symbol"], "symbol": m["symbol"],
+                   "uuid": info["uuid"], "label_uuid": None}
+            if label and row["name"]:
+                vs.TextJust(2)  # centre
+                if label_size_pt:
+                    vs.TextSize(float(label_size_pt))
+                vs.TextOrigin((m["x"], m["y"] - label_offset_mm * _mm_to_doc()))
+                vs.CreateText(row["name"])
+                t = vs.LNewObj()
+                if not _is_nil(t):
+                    created.append(t)
+                    row["label_uuid"] = h_uuid(t)
+            out.append(row)
+    except Exception:
+        for h in created:
+            vs.DelObject(h)
+        raise
+    return {"document": current_document(), "members": out}
+
+
 # ---- Spotlight ------------------------------------------------------------------
 
 LD = "Lighting Device"

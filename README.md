@@ -142,6 +142,7 @@ Vectorworks restart. Claude Code users keep using the installer script.
 | `vw_insert_stage_ramp` | A Stage Ramp down from a stage edge, by ramp length or pitch angle, with rails and a down arrow; revertible |
 | `vw_insert_stage_steps` | A flight of Spotlight Stage Steps down from a stage edge: height, step count, rails, purpose |
 | `vw_insert_soft_goods` | A Soft Goods run (curtain, truss border, pipe-and-drape) along a polyline: height, opening, traveler, pipe/track; revertible (not yet run live) |
+| `vw_insert_band` | Band members, crew or backline from people/backline symbols at positions, each with a name label; one revertible step (not yet run live; needs the People/Audio libraries downloaded once) |
 | `vw_insert_lighting_devices` | Hang fixtures from a fixture symbol on a position at a spacing, as real Lighting Devices with unit numbers, channels, purpose; verified after insert |
 | `vw_create_pio`, `vw_get_pio_parameters`, `vw_set_pio_parameters` | Place and edit plug-in objects (TrussItem, Lighting Device, positions…) by parameter name |
 | `vw_apply_class_standard` | A tidy class set with colours and line weights (Lighting-*, Rigging-*, Stage-*, Soft Goods, Audio, Video, Scenery, People, Venue-*, Notes): creates what is missing, optionally restyles the rest; revertible |

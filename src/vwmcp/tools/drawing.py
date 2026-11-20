@@ -479,6 +479,42 @@ def vw_insert_platform(
 
 
 @mcp.tool(annotations=WRITE)
+def vw_insert_band(
+    members: list[dict[str, Any]],
+    layer: str | None = None,
+    class_name: str | None = None,
+    label: bool = True,
+    label_offset_mm: float = 500,
+    document: str | None = None,
+) -> dict:
+    """Place a band or crew on stage: `members` = [{"symbol": "Drummer", "x": 0,
+    "y": 0, "rotation": 0, "name": "Drums"}, ...] puts each symbol (a people
+    or backline symbol already in the document: vw_list_symbols, or import one
+    with vw_list_library_resources / vw_import_resource) at x, y (document
+    units, optional z) and, with label=True, a centred text with the name
+    `label_offset_mm` below it. `name` defaults to the symbol name. All or
+    nothing; one revertible step; `class_name` applies to symbols and labels.
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    if not members:
+        raise ToolError("members: give at least one {symbol, x, y}")
+    clean = []
+    for i, m in enumerate(members):
+        if not m.get("symbol") or "x" not in m or "y" not in m:
+            raise ToolError(f"member {i}: needs symbol, x and y: {m!r}")
+        clean.append({"symbol": m["symbol"], "x": m["x"], "y": m["y"], "rotation": m.get("rotation", 0),
+                      "name": m.get("name") or m["symbol"], "z": m.get("z")})
+    app.require_document(document)
+    out = vw("insert_band", members=clean, layer=layer, label=label, label_offset_mm=label_offset_mm)
+    uuids = [u for r in out["members"] for u in (r["uuid"], r.get("label_uuid")) if u]
+    out = _journal(out, "vw_insert_band", [{"op": "created", "uuid": u} for u in uuids])
+    if class_name:  # second job: see vw_create_pio
+        vw("set_objects_class", uuids=uuids, cls=class_name)
+        out["class"] = class_name
+    return out
+
+
+@mcp.tool(annotations=WRITE)
 def vw_insert_stage_ramp(
     x: float,
     y: float,

@@ -831,3 +831,37 @@ def test_insert_platform_without_steps(fake, monkeypatch):
         monkeypatch.setattr(mod, "vw", fake_vw)
     out = drawing.vw_insert_platform(4, 8, 2, 0, 0)
     assert out["steps"] is None and len(out["decks"]) == 1
+
+
+# ---- vw_insert_band ----------------------------------------------------------------
+
+def test_insert_band_journals_symbols_and_labels(fake, monkeypatch):
+    seen = {}
+
+    def fake_vw(fn, **kw):
+        if fn == "insert_band":
+            seen.update(kw)
+            return {"document": "Plot.vwx", "members": [
+                {"name": "Drums", "symbol": "Drummer", "uuid": "m1", "label_uuid": "t1"},
+                {"name": "Bass", "symbol": "Bassist", "uuid": "m2", "label_uuid": None}]}
+        return fake(fn, **kw)
+
+    for mod in (app, generic, drawing):
+        monkeypatch.setattr(mod, "vw", fake_vw)
+    out = drawing.vw_insert_band([{"symbol": "Drummer", "x": 0, "y": 0, "name": "Drums"},
+                                  {"symbol": "Bassist", "x": 2, "y": 0, "rotation": 90}],
+                                 layer="Stage", class_name="People")
+    assert seen["members"][1] == {"symbol": "Bassist", "x": 2, "y": 0, "rotation": 90, "name": "Bassist", "z": None}
+    assert seen["layer"] == "Stage" and seen["label"] is True
+    assert out["class"] == "People"
+    assert ("set_objects_class", {"uuids": ["m1", "t1", "m2"], "cls": "People"}) in fake.calls
+    generic.vw_revert_last()
+    assert last_revert_ops(fake) == [{"op": "created", "uuid": "m1"}, {"op": "created", "uuid": "t1"},
+                                     {"op": "created", "uuid": "m2"}]
+
+
+def test_insert_band_validates_members(fake):
+    with pytest.raises(ToolError, match="symbol"):
+        drawing.vw_insert_band([{"x": 0, "y": 0}])
+    with pytest.raises(ToolError, match="members"):
+        drawing.vw_insert_band([])

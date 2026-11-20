@@ -68,7 +68,7 @@ TOOL_GROUPS = {
     ],
     "stage": [
         "vw_insert_truss_run", "vw_list_truss", "vw_insert_stage_decks", "vw_insert_stage_steps",
-        "vw_insert_stage_ramp", "vw_insert_soft_goods", "vw_insert_platform",
+        "vw_insert_stage_ramp", "vw_insert_soft_goods", "vw_insert_platform", "vw_insert_band",
     ],
     "plan": [
         "vw_export_geometry", "vw_render_layers", "vw_duplicate_layer", "vw_set_vertices",
