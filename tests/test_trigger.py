@@ -20,7 +20,7 @@ def make(root, uptime, procs=None):
         return FakeProc(done=False)
 
     t = MacTrigger(root, app="Vectorworks 2026", uptime=lambda: uptime, spawn=spawn,
-                   busy_grace=0.05, poll_interval=0.001)
+                   busy_grace=0.05, poll_interval=0.001, windows=lambda: [])
     return t, procs
 
 
@@ -79,7 +79,7 @@ class SlowProc:
 def test_waits_briefly_for_previous_event_to_finish(root):
     procs = []
     t = MacTrigger(root, uptime=lambda: 600, spawn=lambda a: procs.append(a) or SlowProc(),
-                   busy_grace=1.0, poll_interval=0.001)
+                   busy_grace=1.0, poll_interval=0.001, windows=lambda: [])
     t()
     t()  # previous proc finishes within the grace period
     assert len(procs) == 2
@@ -93,3 +93,23 @@ def test_in_flight_and_target_alive(root):
     assert t.target_alive() is True
     t.uptime = lambda: None
     assert t.target_alive() is False
+
+
+def test_refuses_when_only_the_start_screen_is_open(root):
+    from vwmcp.screenshot import Window
+    t, procs = make(root, uptime=120)
+    t.windows = lambda: [Window(1, "Vectorworks 2026", 0, 0, 0, 1400, 900)]
+    with pytest.raises(TriggerError, match="No document is open"):
+        t()
+    assert procs == []
+
+
+def test_sends_when_a_document_window_exists_or_titles_are_unknown(root):
+    from vwmcp.screenshot import Window
+    t, procs = make(root, uptime=120)
+    t.windows = lambda: [Window(1, "Plot.vwx", 0, 0, 0, 1400, 900)]
+    t()
+    t.windows = lambda: []
+    t._pending = None
+    t()
+    assert len(procs) == 2

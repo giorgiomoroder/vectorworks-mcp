@@ -88,6 +88,26 @@ def is_script_error_alert(w: Window) -> bool:
     return w.title.strip() == "Vectorworks" and w.height < 300 and w.width < 700
 
 
+# Titles of Vectorworks' own windows when no document is open (the start
+# screen) besides the app's name itself. Extend after the live check
+# (vs-notes "Start screen").
+START_SCREEN_TITLES = {"Vectorworks", "Home Screen", "Start Screen"}
+
+
+def has_document_window(windows: list[Window], app: str) -> bool | None:
+    """True if a document window is on screen, False if only the start screen
+    (and dialogs or helper windows) are, None if we cannot tell: no titles at
+    all (the Screen Recording permission hides them) or no windows.
+    A job sent while only the start screen shows crashes Vectorworks 2026
+    and 2027 (found by Keystone), so the trigger refuses on False."""
+    normal = [w for w in windows if w.layer == 0 and w.height >= 200]
+    titled = [w for w in normal if w.title.strip()]
+    if not titled:
+        return None
+    start = START_SCREEN_TITLES | {app}
+    return any(w.title.strip() not in start and normal_level_blocker(w) is None for w in titled)
+
+
 def pick_window(windows: list[Window], title: str | None = None) -> Window:
     """The document window: normal layer, matching title if given, else the largest."""
     normal = [w for w in windows if w.layer == 0 and normal_level_blocker(w) is None]

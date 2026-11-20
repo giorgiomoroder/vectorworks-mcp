@@ -24,6 +24,17 @@ MENU_COMMAND = "MCP Run Job"
 MIN_UPTIME = float(os.environ.get("VWMCP_MIN_UPTIME", "30"))
 
 
+def _mac_windows(app: str) -> list:
+    """Vectorworks' on-screen windows (CoreGraphics, no Apple Event); [] when
+    that fails, which only disables the start-screen preflight."""
+    try:
+        from vwmcp import screenshot
+
+        return screenshot.mac_windows(app)
+    except Exception:  # noqa: BLE001 - the preflight never blocks on its own failure
+        return []
+
+
 def parse_etime(text: str) -> int:
     """Parse ps etime ([[dd-]hh:]mm:ss) into seconds."""
     days, _, rest = text.strip().rpartition("-")
@@ -55,11 +66,13 @@ class MacTrigger:
         spawn: Callable[[list[str]], subprocess.Popen] | None = None,
         busy_grace: float = 10.0,
         poll_interval: float = 0.05,
+        windows: Callable[[], list] | None = None,
     ):
         self.root = Path(root)
         self.app = app
         self.min_uptime = min_uptime
         self.uptime = uptime or (lambda: mac_app_uptime(app))
+        self.windows = windows or (lambda: _mac_windows(app))
         self.spawn = spawn or (
             lambda args: subprocess.Popen(
                 args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
@@ -97,6 +110,13 @@ class MacTrigger:
         if up < self.min_uptime:
             raise TriggerError(
                 f"{self.app} is still starting ({up:.0f}s). Try again in a few seconds."
+            )
+        from vwmcp.screenshot import has_document_window
+
+        if has_document_window(self.windows(), self.app) is False:
+            raise TriggerError(
+                f"No document is open in {self.app} (only the start screen). A job sent now "
+                "would crash Vectorworks. Open a document first."
             )
         if self._previous_still_running():
             raise TriggerError(

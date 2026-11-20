@@ -107,3 +107,27 @@ def test_object_preferences_window_is_reported_as_blocking():
     (found,) = ss.blocking_windows([doc, prefs])
     assert found["id"] == 5 and "Object Preferences" in found["kind"]
     assert ss.pick_window([doc, prefs]) == doc
+
+
+# ------------------------------------------------------------ start screen
+
+
+def test_a_titled_document_window_counts():
+    ws = [win(1, "test_mcp.vwx", w=1800, h=1100), win(2, "", w=300, h=40)]
+    assert ss.has_document_window(ws, app="Vectorworks 2026") is True
+
+
+def test_only_the_start_screen_does_not_count():
+    ws = [win(1, "Vectorworks 2026", w=1400, h=900), win(2, "", w=300, h=40)]
+    assert ss.has_document_window(ws, app="Vectorworks 2026") is False
+
+
+def test_a_dialog_alone_is_not_a_document_window():
+    ws = [win(1, "Vectorworks 2026", w=1400, h=900), win(2, "Script Errors", w=500, h=300)]
+    assert ss.has_document_window(ws, app="Vectorworks 2026") is False
+
+
+def test_no_titles_at_all_means_we_cannot_tell_so_we_do_not_block():
+    ws = [win(1, "", w=1800, h=1100)]  # no Screen Recording permission: titles hidden
+    assert ss.has_document_window(ws, app="Vectorworks 2026") is None
+    assert ss.has_document_window([], app="Vectorworks 2026") is None
