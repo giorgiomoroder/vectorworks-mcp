@@ -119,6 +119,29 @@ menu command gets a fresh Python state (module globals don't persist).
 - `vw_switch_document` / `document=` guard worked throughout with 2027
   open beside 2026; nothing reached 2027.
 
+## Hoists and truss corners (reads 2026-11-20, VW 2026)
+
+- `CreateCustomObjectN("Hoist", ...)` → "plug-in 'Hoist' is not available in
+  this document". The only hoist `.vso` in the app Plug-ins folder is
+  `HoistVW.vso` = **"Hoist (Legacy)"**, flagged "Don't Put In Workspace"
+  (parameters: MotorNumber, MotorLabel, Location, Type, MaximumLoadStr,
+  BrakeType, Function, Manufacturer, HoistPos, HiHook, LoHook, LoadTrim,
+  Speed, Phasing, Voltage, ChainLength, HoistWt, ChainWt, LoadWt, ControlID
+  …). The current Hoist tool is native; read its plug-in name with
+  `pio_name` from a hoist Michael inserted (e.g. on a real plot) before
+  building `vw_insert_hoists`. The Lighting Device is native too: no
+  `.vso`, so its parameter names come from a plot (`ld_field_names`).
+- Truss corner symbol (`Global Truss F34Box Corner`, F34 library):
+  `GetSymbolType` = 2 (hybrid), `BrxTrussItemRecord`: `ItemType` "Corner",
+  `Length` 0, `Height`/`Width` 290, `Weight` 7.71, `CenterBased` True,
+  `Center X` 145, connection points `Right` (290, 0, 0), `Top` (145, 145, 0),
+  `Bottom` (145, -145, 0), `High` (0, 0, 290), `Low` (0, 0, 0) with
+  `* Valid` flags, `CornerType` "CornerNone", `HingeGeometry` "Book Corner".
+  The F34 library also has C19…C61 corners, T35/T40 tees and R10…R750
+  curved pieces (`ItemType` to read). This is what a corner-aware
+  `vw_insert_truss_run` needs: place the corner so its Low/start point meets
+  the run's end, continue from the chosen connection point at ±90°.
+
 ## Sheets (live 2026-11-20, VW 2026)
 
 - `CreateVP(sheet_layer_handle)` with the sheet active makes a viewport (type
