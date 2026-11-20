@@ -135,6 +135,39 @@ def test_missing_field_skips_its_check_and_reports_once():
 
 
 def test_summary_counts_devices_per_check():
-    rows = [device(uuid="a", gdtf="", mode=""), device(uuid="b", unit="2", channel="2", fixture_id="2", gdtf="", address="1/17", absolute="17")]
+    rows = [device(uuid="a", mode=""), device(uuid="b", unit="2", channel="2", fixture_id="2", gdtf="", address="1/17", absolute="17")]
     out = mvr.run_checks(data(rows))
-    assert out["summary"] == {"no_gdtf": 2, "no_mode": 1}
+    assert out["summary"] == {"no_gdtf": 1, "no_mode": 1}
+
+
+def test_fixtureid_is_the_fixture_type_not_an_id():
+    # Live 2026-11-20: the Bobby Lee plot (VW 2026) has "FixtureID" = "Astera AX5" etc.
+    fields = [f for f in ALL_FIELDS if f != "Fixture ID"] + ["FixtureID"]
+    rows = [{**{k: v for k, v in device(uuid="a").items() if k != "Fixture ID"}, "FixtureID": "Astera AX5"},
+            {**{k: v for k, v in device(uuid="b", unit="2", channel="2", address="1/17", absolute="17").items()
+                if k != "Fixture ID"}, "FixtureID": "Astera AX5"}]
+    out = mvr.run_checks(data(rows, fields=fields))
+    assert "duplicate_fixture_id" not in checks(out) and "no_fixture_id" not in checks(out)
+    assert "Fixture ID" in issue(out, "field_missing")["message"]
+
+
+def test_gdtf_fixture_mode_is_preferred_and_only_checked_with_a_gdtf_fixture():
+    fields = ALL_FIELDS + ["GDTF Fixture Mode"]
+    rows = [{**device(uuid="a"), "GDTF Fixture Mode": ""},                       # GDTF set, no GDTF mode
+            {**device(uuid="b", unit="2", channel="2", fixture_id="2", address="1/17", absolute="17", gdtf="", mode=""),
+             "GDTF Fixture Mode": ""}]                                          # no GDTF at all
+    out = mvr.run_checks(data(rows, fields=fields))
+    assert [d["uuid"] for d in issue(out, "no_mode")["devices"]] == ["a"]
+    assert [d["uuid"] for d in issue(out, "no_gdtf")["devices"]] == ["b"]
+
+
+def test_identical_addresses_are_a_shared_address_warning_not_an_overlap():
+    rows = [device(uuid="a", address="1/207", absolute="207", channels="1"),
+            device(uuid="b", unit="2", channel="2", fixture_id="2", address="1/207", absolute="207", channels="1"),
+            device(uuid="c", unit="3", channel="3", fixture_id="3", address="2/311", absolute="823", channels="21"),
+            device(uuid="d", unit="4", channel="4", fixture_id="4", address="2/330", absolute="842", channels="21")]
+    out = mvr.run_checks(data(rows))
+    shared = issue(out, "address_shared")
+    assert shared["severity"] == "warning" and [x["uuid"] for x in shared["devices"]] == ["a", "b"]
+    overlap = issue(out, "address_overlap")
+    assert overlap["severity"] == "error" and [x["uuid"] for x in overlap["devices"]] == ["c", "d"]

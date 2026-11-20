@@ -70,8 +70,11 @@ after and anything Spotlight overrode.
 1. `vw_mvr_check` (optionally `position=`). Errors block or empty the MVR:
    `no_gdtf`, `no_mode`, `no_fixture_id`, `duplicate_fixture_id`,
    `unpatched`, `address_overlap`, `address_past_512`. Warnings:
+   `address_shared` (two fixtures on one identical address, often intended),
    `no_position`, `position_without_object`, `symbol_without_3d`,
-   `symbol_missing`. `field_missing` lists fields this document lacks.
+   `symbol_missing`. `field_missing` lists fields this document lacks
+   (Vectorworks 2026 has no per-fixture "Fixture ID" field; its `FixtureID`
+   is the fixture type name).
 2. Fix data with `vw_set_lighting_device_fields` (Fixture ID,
    UniverseAddress, Position, Fixture Mode); a GDTF fixture type is chosen in
    the Object Info palette; a 2D-only symbol needs a hybrid one

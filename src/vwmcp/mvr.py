@@ -24,6 +24,14 @@ FIELDS = [
     "GDTF Fixture Name", "Fixture ID", "UniverseAddress", "Absolute Address",
     "Num Channels",
 ]
+# Logical field -> names it may have in a document, best first (live 2026-11-20
+# on a VW 2026 plot: "GDTF Fixture Mode" is separate from "Fixture Mode"; the
+# "FixtureID" field there holds the fixture *type* name, e.g. "Astera AX5", so
+# it is NOT an alias for a per-fixture id and the id checks stay skipped until
+# a document has a real "Fixture ID" field).
+ALIASES = {
+    "Fixture Mode": ["GDTF Fixture Mode", "Fixture Mode"],
+}
 ERROR, WARNING = "error", "warning"
 # check -> (severity, fields it needs)
 NEEDS = {
@@ -33,6 +41,7 @@ NEEDS = {
     "duplicate_fixture_id": (ERROR, ["Fixture ID"]),
     "unpatched": (ERROR, ["UniverseAddress"]),
     "address_overlap": (ERROR, ["UniverseAddress", "Num Channels"]),
+    "address_shared": (WARNING, ["UniverseAddress", "Num Channels"]),
     "address_past_512": (ERROR, ["UniverseAddress", "Num Channels"]),
     "no_position": (WARNING, ["Position"]),
     "position_without_object": (WARNING, ["Position"]),
@@ -98,6 +107,14 @@ def run_checks(data: dict) -> dict:
     [names], "symbols": {name: {"type": int}}}. Returns ok, summary, issues."""
     present = set(data.get("fields", []))
     rows = data.get("devices", [])
+    # resolve aliases: copy the first present spelling into the logical name
+    for logical, names in ALIASES.items():
+        found = next((n for n in names if n in present), None)
+        if found:
+            present.add(logical)
+            if found != logical:
+                for r in rows:
+                    r[logical] = r.get(found, "")
     positions = set(data.get("positions", []))
     symbols = data.get("symbols", {})
     issues: list[dict] = []
@@ -122,7 +139,12 @@ def run_checks(data: dict) -> dict:
     blank("no_gdtf", "GDTF Fixture Name",
           "No GDTF fixture type: these export without geometry or channel layout. Pick a "
           "GDTF fixture in the Object Info palette or set 'GDTF Fixture Name'.")
-    blank("no_mode", "Fixture Mode", "No GDTF fixture mode (DMX mode) chosen.")
+    if active("no_mode") and active("no_gdtf"):
+        add("no_mode", [r for r in rows if str(r.get("GDTF Fixture Name", "")).strip()
+                        and not str(r.get("Fixture Mode", "")).strip()],
+            "GDTF fixture set but no GDTF fixture mode (DMX mode) chosen.")
+    elif active("no_mode"):
+        blank("no_mode", "Fixture Mode", "No fixture mode (DMX mode) chosen.")
     blank("no_fixture_id", "Fixture ID",
           "No Fixture ID: MVR identifies fixtures by it (Spotlight > Numbering can fill it).")
     if active("duplicate_fixture_id"):
@@ -137,11 +159,16 @@ def run_checks(data: dict) -> dict:
             "No DMX patch (UniverseAddress empty or 0/0).")
     if active("address_overlap"):
         for r1, r2 in footprint_overlaps(rows):
-            add("address_overlap", [r1, r2],
-                "%s at %s and %s at %s overlap (footprints %s and %s channels)." % (
-                    _label(r1), r1["UniverseAddress"].strip(), _label(r2),
-                    r2["UniverseAddress"].strip(), _int(r1.get("Num Channels")),
-                    _int(r2.get("Num Channels"))))
+            a1, a2 = r1["UniverseAddress"].strip(), r2["UniverseAddress"].strip()
+            if parse_address(a1) == parse_address(a2):
+                add("address_shared", [r1, r2],
+                    "%s and %s share address %s (fine if they are meant to run together)."
+                    % (_label(r1), _label(r2), a1))
+            else:
+                add("address_overlap", [r1, r2],
+                    "%s at %s and %s at %s overlap (footprints %s and %s channels)." % (
+                        _label(r1), a1, _label(r2), a2, _int(r1.get("Num Channels")),
+                        _int(r2.get("Num Channels"))))
     if active("address_past_512"):
         past = []
         for r in rows:

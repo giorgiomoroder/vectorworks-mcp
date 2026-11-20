@@ -469,8 +469,8 @@ def read_devices(uuids, fields):
 
 MVR_FIELDS = [
     "Unit Number", "Channel", "Position", "Inst Type", "Symbol Name", "Fixture Mode",
-    "GDTF Fixture Name", "GDTF Type ID", "Fixture ID", "UniverseAddress", "Absolute Address",
-    "Num Channels", "Device Type",
+    "GDTF Fixture Mode", "GDTF Fixture Name", "GDTF Fixture Type ID", "Fixture ID",
+    "UniverseAddress", "Absolute Address", "Num Channels", "Device Type",
 ]
 
 
@@ -478,7 +478,9 @@ def mvr_data():
     """Everything the MVR pre-flight (server-side `mvr.run_checks`) looks at:
     device rows with the MVR-relevant fields this document has, the names of the
     position objects, and the symbol type of every fixture symbol in use
-    (vs.GetSymbolType: 0 2D only, 1 3D, 2 hybrid; not run live yet)."""
+    (vs.GetSymbolType: 0 2D only, 1 3D, 2 hybrid; live 2026-11-20 on the
+    Bobby Lee plot: field names FixtureID, GDTF Fixture Mode, GDTF Fixture
+    Type ID exist in VW 2026)."""
     known = set(ld_field_names())
     fields = [f for f in MVR_FIELDS if f in known]
     rows = [ld_row(h, fields) for h in lighting_devices()]

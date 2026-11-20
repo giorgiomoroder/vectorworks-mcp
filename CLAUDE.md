@@ -193,10 +193,11 @@ on a throwaway doc and record findings in `docs/vs-notes.md`:
 2026-11-20 batch (Michael: "all five options"). Live on VW 2026 the same afternoon
 (test_mcp.vwx, 2027 open beside it): class standard, sheet + title block, platform,
 ramp, soft goods, band, screenshot mapping all verified and reverted (vs-notes
-"Live findings 2026-11-20"). Still unverified live: `vw_mvr_check` and
-`vw_import_hookup` (need the Bobby Lee plot open), the `.mcpb` install.
-- [~] a. `vw_mvr_check` built; field names `Fixture ID`, `GDTF Fixture Name`,
-      `Fixture Mode` and `GetSymbolType` values still to confirm on a real plot.
+"Live findings 2026-11-20"). `vw_mvr_check` and `vw_import_hookup` verified on the Bobby Lee
+plot the same day. Still unverified: the `.mcpb` install in Claude Desktop, hoists
+(current Hoist plug-in name unknown; legacy `HoistVW` only), truss corners (record read).
+- [x] a. `vw_mvr_check` (live on the Bobby Lee plot: `FixtureID` is the fixture type
+      name, not an id; `GDTF Fixture Mode` separate; `GetSymbolType` 0/2 confirmed).
 - [x] b. `vw_apply_class_standard`, `vw_create_sheet` (live: object variable 1003 =
       scale, title/number/project in the Title Block Sheet/Project Data records).
 - [x] c. `vw_screenshot(mapping=True)` + `vw_point_to_world` (live-calibrated: display
@@ -204,7 +205,7 @@ ramp, soft goods, band, screenshot mapping all verified and reverted (vs-notes
 - [x] d. `vw_doctor`, `vw_ping` lists documents, session-start instructions,
       skill, `.mcpb` bundle (validated with the official schema; round trip over
       stdio from the unzipped bundle worked).
-- [~] e. `vw_import_hookup` (not live), `vw_insert_platform`, `vw_insert_band` (live);
+- [~] e. `vw_import_hookup`, `vw_insert_platform`, `vw_insert_band` (all live);
       hoists and truss corners wait for live reads. Composite inserts should restore
       the user's selection like `insert_lighting_devices` does.
 

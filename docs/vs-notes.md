@@ -73,7 +73,28 @@ menu command gets a fresh Python state (module globals don't persist).
   (not a modal level), which blocked the next job for good. `vw_screenshot`
   now reports it as `in_front` (`screenshot.is_script_error_alert`).
 
-## MVR pre-flight (not run live, 2026-11-20)
+## MVR pre-flight (live 2026-11-20 on the Bobby Lee plot, VW 2026, 216 devices)
+
+- Lighting Device fields present: `FixtureID` (**the fixture type name**,
+  e.g. "Astera AX5", shared by all units of a type: not an MVR identity),
+  `Fixture Mode`, `GDTF Fixture Mode`, `GDTF Fixture Name`, `GDTF Fixture
+  Type ID`, `GDTF Fixture Custom ID`, `Vision Fixture Name`,
+  `UniverseAddress`, `Universe`, `DMX Address`, `Absolute Address`, `Num
+  Channels`, `UseGDTFGeometry`. No `Fixture ID` (with a space). Symbol
+  definitions carry `EntEquipUniversal.MVR-ID`.
+- `vs.GetSymbolType` returned 2 for a hybrid library symbol and 0 for three
+  2D-only fixture symbols on the plot (`ElektraLite 30º`, `RGB WW/CW Tape`,
+  `Spotting Lamp`).
+- Result on the plot: 214/216 without GDTF fixture, 106 unpatched, 20
+  address pairs (mostly identical addresses on paired units: now
+  `address_shared`, a warning; 3 real partial overlaps at 2/311-2/330-2/349
+  and 3/311-3/330 with 21-channel footprints), 44 devices without position,
+  8 position names without an object (known from `vw_list_positions`).
+- `vw_import_hookup` (same plot): 3 rows keyed by position + unit, dry run,
+  apply (Purpose + User Field 6 on FOH TRUSS 8/20, User Field 6 on Balcony
+  Rail 3), `vw_revert_last` restored all three (re-read).
+
+### Earlier assumptions (before the live run)
 
 - `vwlib.mvr_data` reads the MVR-relevant Lighting Device fields that exist in
   the document (`ld_field_names`), so `Fixture ID`, `GDTF Fixture Name`,
