@@ -34,6 +34,21 @@ def h_uuid(h):
     return vs.GetObjectUuid(h)
 
 
+def _keep_selection(fn):
+    """Run an insert helper without changing the user's selection: new plug-in
+    objects come in selected (live 2026-11-20: Object Info showed the three
+    platform parts), which would surprise a user working in the document."""
+    def wrapped(*args, **kwargs):
+        before = _selected_uuids()
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            _restore_selection(before)
+    wrapped.__name__ = fn.__name__
+    wrapped.__doc__ = fn.__doc__
+    return wrapped
+
+
 def handle(uuid):
     h = vs.GetObjectByUuid(uuid)
     if _is_nil(h):
@@ -287,6 +302,7 @@ def insert_symbol(name, x, y, z=None, layer=None, cls=None, rotation=0.0):
     return info
 
 
+@_keep_selection
 def insert_band(members, layer=None, label=True, label_offset_mm=500.0, label_size_pt=None):
     """Place people/backline symbols with an optional name label under each:
     members = [{"symbol", "x", "y", "rotation", "name", "z"}]. Symbols must be
@@ -977,6 +993,7 @@ def _next_truss_system():
     return "T%d" % n
 
 
+@_keep_selection
 def insert_truss_run(symbol, x, y, count, rotation=0.0, z=0.0, position_name=None,
                      layer=None, truss_system=None, library_path=None):
     """Place `count` straight truss pieces end to end from (x, y), heading along
@@ -1265,6 +1282,7 @@ def _extent3d(h):
     return {"center": [cx, cy, cz], "size": [dx, dy, dz]}
 
 
+@_keep_selection
 def insert_stage_decks(width, depth, height, x, y, columns=1, rows=1, rotation=0.0,
                        structure="Legs-Basic", purpose=None, position=None, layer=None):
     """Tile `columns` x `rows` Stage Deck objects of width x depth (document
@@ -1326,6 +1344,7 @@ STEPS_TYPES = ["Self-Adjusting", "Frame Free-Standing", "Solid Free-Standing",
                "Open Free-Standing", "Simple"]
 
 
+@_keep_selection
 def insert_stage_steps(x, y, stage_height, rotation=0.0, tread_width=None, steps=None,
                        kind="Self-Adjusting", rail_left=False, rail_right=False,
                        stringer_length=None, purpose=None, position=None, layer=None):
@@ -1366,6 +1385,7 @@ def insert_stage_steps(x, y, stage_height, rotation=0.0, tread_width=None, steps
     return {"document": current_document(), "uuid": h_uuid(h), "steps": steps}
 
 
+@_keep_selection
 def insert_platform(width, depth, height, x, y, columns=1, rows=1, rotation=0.0,
                     structure="Legs-Basic", purpose=None, position=None, layer=None, steps=None):
     """Decks (insert_stage_decks) plus, if `steps` is given, one flight of
@@ -1397,6 +1417,7 @@ RAMP = "Stage Ramp"
 RAMP_TYPES = ["Legs", "Solid", "Simple"]
 
 
+@_keep_selection
 def insert_stage_ramp(x, y, stage_height, rotation=0.0, tread_width=None, ramp_length=None,
                       pitch_angle=None, kind="Legs", rail_left=False, rail_right=False,
                       arrow=False, purpose=None, position=None, layer=None):
@@ -1469,6 +1490,7 @@ def _open_polyline(points):
     return h
 
 
+@_keep_selection
 def insert_soft_goods(points, height, function="Curtain", opening_width=None, open_from=None,
                       traveler=False, add_pipe=False, add_track=False, purpose=None,
                       position=None, layer=None):

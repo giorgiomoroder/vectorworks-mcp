@@ -124,8 +124,17 @@ class FakeDoc:
         self.library = {"/lib/Truss.vwx": ["Tomcat 12", "Tomcat 20"]}
         self.events = []
         self.next = 100
+        self.selected = set()
         v = vs
         v.GetFName = lambda: "Plot.vwx"
+        # selection (insert helpers save and restore it)
+        sel = lambda: sorted(h for h in self.selected if h in self.objects)  # noqa: E731
+        v.DSelectAll = lambda: self.selected.clear()
+        v.SetSelect = lambda hh: self.selected.add(hh)
+        v.Selected = lambda hh: hh in self.selected
+        v.NumSelectedObjects = lambda: len(self.selected)
+        v.FSActLayer = lambda: (sel() or [0])[0]
+        v.NextSObj = lambda hh: next((x for x in sel() if x > hh), 0)
         v.GetObjectUuid = lambda h: self.objects[h]["uuid"]
         v.GetObjectByUuid = lambda u: next((h for h, o in self.objects.items() if o["uuid"] == u), 0)
         v.GetTypeN = lambda h: self.objects[h]["type"] if h in self.objects else (16 if h in self.resources.values() else 0)
@@ -871,3 +880,14 @@ def test_insert_band_validates_members(fake):
         drawing.vw_insert_band([{"x": 0, "y": 0}])
     with pytest.raises(ToolError, match="members"):
         drawing.vw_insert_band([])
+
+
+def test_inserts_restore_the_users_selection(doc, fake_vs):
+    PIO_FIELDS["Stage Deck"] = ["DeckShape", "Width", "Depth", "Height", "StgStyle"]
+    fake_vs.GetUnits = lambda: (25, 3, 2, 1.0, '"', " sq ft")
+    pre = doc._create(3)  # an existing object the user has selected
+    doc.selected = {pre}
+    orig_create = fake_vs.CreateCustomObjectN
+    fake_vs.CreateCustomObjectN = lambda *a: (lambda h: (doc.selected.clear(), doc.selected.add(h), h)[2])(orig_create(*a))
+    drawing.vw_insert_stage_decks(48, 96, 24, 0, 0)
+    assert doc.selected == {pre}
