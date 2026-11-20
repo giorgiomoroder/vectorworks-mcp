@@ -180,6 +180,7 @@ class FakeDoc:
         v.AddPoint = lambda p: self.poly.append(list(p))
         v.EndPoly = lambda: self._create(21, points=self.poly, x=self.poly[0][0], y=self.poly[0][1])
         v.CreateCustomObjectPath = lambda name, path, prof: self._path_pio(name, path)
+        v.SetCustomObjectPath = lambda h, path: self._set_path(h, path)
 
     def _create(self, t, **kw):
         h = self.next
@@ -197,6 +198,11 @@ class FakeDoc:
             return 0
         pts = self.objects.pop(path)["points"]
         return self._create(86, pio=name, path=pts, x=pts[0][0], y=pts[0][1])
+
+    def _set_path(self, h, path):
+        pts = self.objects.pop(path)["points"]
+        self.objects[h]["path"] = pts
+        return True
 
     def _delete(self, h):
         self.events.append(("del", h))

@@ -1497,12 +1497,16 @@ def insert_soft_goods(points, height, function="Curtain", opening_width=None, op
         params["Purpose"] = purpose
     if position:
         params["Position"] = position
-    path = _open_polyline(points)
-    h = vs.CreateCustomObjectPath(SOFT_GOODS, path, None)
+    # Live 2026-11-20: CreateCustomObjectPath opened the plug-in's "Object
+    # Preferences" dialog (no showPref flag), holding the job until the user
+    # clicked OK; the path was consumed and the height applied. So create the
+    # object silently with CreateCustomObjectN(..., False) and attach the path.
+    h = vs.CreateCustomObjectN(SOFT_GOODS, (points[0][0], points[0][1]), 0, False)
     if _is_nil(h):
-        vs.DelObject(path)
         raise RuntimeError("Soft Goods plug-in did not create an object")
     try:
+        path = _open_polyline(points)
+        vs.SetCustomObjectPath(h, path)
         _write_fields(h, SOFT_GOODS, params)  # class: see create_pio, applied in a 2nd job
     except Exception:
         vs.DelObject(h)
