@@ -618,11 +618,12 @@ def vw_screenshot(
     geometry (screen points), the saved file path, and `in_front`: any dialog
     or open menu (a right-click menu left open also stalls jobs) that the
     document capture would not show. mapping=True adds one small job to read
-    the view (centre, zoom, projection) and returns `mapping`: drawing
-    coordinates of the image origin and units per pixel, so a point you see in
-    the picture can be turned into x, y with vw_point_to_world (exact in
-    Top/Plan only). If that job fails the picture still comes back, with
-    `mapping_error`."""
+    the view (centre, zoom, layer scale) and returns `mapping`: drawing
+    coordinates of the image origin and units per pixel (from the display's
+    pixel density and the white drawing area found in the capture), so a point
+    you see in the picture can be turned into x, y with vw_point_to_world
+    (exact in Top/Plan only; calibrated live 2026-11-20). If that job fails
+    the picture still comes back, with `mapping_error`."""
     global _LAST_MAPPING
     try:
         path, window, in_front = screenshot.screenshot(
@@ -638,7 +639,8 @@ def vw_screenshot(
         try:
             view = vw("view_mapping")
             m = viewmap.Mapping.from_view(view, window.as_dict(), viewmap.png_size(path),
-                                          units=view.get("units", ""))
+                                          canvas=viewmap.canvas_bbox(path),
+                                          points_per_inch=viewmap.display_points_per_inch())
             _LAST_MAPPING = m
             meta["mapping"] = m.as_dict()
             meta["view"] = {k: view[k] for k in ("zoom", "layer_scale", "projection", "layer") if k in view}

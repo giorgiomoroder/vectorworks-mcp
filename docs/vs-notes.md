@@ -83,7 +83,23 @@ menu command gets a fresh Python state (module globals don't persist).
   (hybrid) as the VectorScript reference says; `vw_mvr_check` flags 0.
   Verify on a fixture symbol and on a plain 2D symbol.
 
-## Sheets and class standards (not run live, 2026-11-20)
+## Sheets (live 2026-11-20, VW 2026)
+
+- `CreateVP(sheet_layer_handle)` with the sheet active makes a viewport (type
+  122); `SetObjectVariableReal(vp, 1003, 48)` reads back 48.0 (scale);
+  `GetObjectVariableInt(vp, 1000)` = 6 (Top/Plan). `SetVPLayerVisibility`,
+  `SetVPClassVisibility`, `UpdateVP` raised nothing. Deleting the sheet layer
+  (`vw_revert_last`) removes viewport and title block with it.
+- `CreateCustomObjectN("Title Block Border", (0, 0), 0, False)` creates a
+  title block; its ~100 parameters are layout only. Sheet title/number live
+  in the attached record **"Title Block Sheet Data"** (`Sheet Title`, `Sheet
+  Number`, `Page Number`, `Date`, `Status`, `Scale`...), project data in
+  **"Title Block Project Data"** (`Project Name`, `Project ID`, `Project
+  Address`, `File Name`...), revisions in "Title Block Revision Data".
+  `SetRField(h, "Title Block Sheet Data", "Sheet Title", ...)` + `ResetObject`
+  sticks. `NumRecords(h)` / `GetRecord(h, i)` list the attached records.
+
+## Class standards (live 2026-11-20, see "Live findings" above)
 
 - `vwlib.create_sheet`: `CreateVP(sheet_layer)` while the sheet is active,
   `SetVPLayerVisibility(vp, layer_h, 0 | -1)`, `SetVPClassVisibility(vp,

@@ -98,3 +98,12 @@ def test_script_error_alert_is_reported_even_at_normal_window_level():
     (found,) = ss.blocking_windows([doc, alert])
     assert found["id"] == 9 and found["kind"] == "alert (Script error: click OK in Vectorworks)"
     assert ss.pick_window([doc, alert]) == doc
+
+
+def test_object_preferences_window_is_reported_as_blocking():
+    # Live 2026-11-20: a plug-in's "Object Preferences" dialog (level 0) held a job.
+    prefs = ss.Window(id=5, title="Object Preferences", layer=0, x=997, y=35, width=250, height=1002)
+    doc = win(2, "test_mcp.vwx", w=1728, h=978)
+    (found,) = ss.blocking_windows([doc, prefs])
+    assert found["id"] == 5 and "Object Preferences" in found["kind"]
+    assert ss.pick_window([doc, prefs]) == doc

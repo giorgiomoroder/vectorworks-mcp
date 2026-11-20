@@ -676,26 +676,29 @@ def set_view(view=None, fit=False):
 
 
 # ---- sheet layers --------------------------------------------------------------
-# Not run live yet (2026-11-20). Object variable 1003 = viewport scale (real)
-# and the Title Block Border parameter names are the things to verify first.
+# Live 2026-11-20 (VW 2026): CreateVP on the active sheet layer, object
+# variable 1003 = viewport scale (read back 48.0), 1000 = 6 in Top/Plan.
 
 TITLE_BLOCK = "Title Block Border"
 VP_SCALE = 1003
 
 
-def _record_field_names(h):
-    rec = vs.GetParametricRecord(h)
-    if _is_nil(rec):
-        return []
-    return [_str(vs.GetFldName(rec, i)) for i in range(1, vs.NumFields(rec) + 1)]
+def _attached_records(h):
+    """{record name: [field names]} of every record attached to an object."""
+    out = {}
+    for i in range(1, vs.NumRecords(h) + 1):
+        rec = vs.GetRecord(h, i)
+        out[_str(vs.GetName(rec))] = [_str(vs.GetFldName(rec, j)) for j in range(1, vs.NumFields(rec) + 1)]
+    return out
 
 
 def create_sheet(name, layers, scale=48.0, hide_classes=None, title_block=None):
     """A sheet layer with one viewport showing the given design layers at
     1:`scale` (Top/Plan, the viewport default), classes in `hide_classes`
     hidden in it, and optionally a Title Block Border whose parameters
-    `title_block` ({field: value}) are written where the field exists.
-    The user's active layer is restored at the end. Deleting the sheet layer
+    `title_block` ({field: value}) are written to the attached data records
+    ("Sheet Title", "Sheet Number" in Title Block Sheet Data, "Project Name"
+    in Title Block Project Data). The user's active layer is restored at the end. Deleting the sheet layer
     (revert) removes the viewport and title block with it."""
     kinds = dict((l["name"], l["kind"]) for l in list_layers())
     missing = [l for l in layers if l not in kinds]
@@ -726,13 +729,25 @@ def create_sheet(name, layers, scale=48.0, hide_classes=None, title_block=None):
             if _is_nil(tb):
                 out["title_block_error"] = "%r plug-in did not create an object" % TITLE_BLOCK
             else:
-                known = set(_record_field_names(tb))
-                ok = dict((k, v) for k, v in title_block.items() if k in known)
-                if ok:
-                    _write_fields(tb, TITLE_BLOCK, ok)
-                out["title_block"] = {"uuid": h_uuid(tb), "fields_set": sorted(ok),
-                                      "fields_unknown": sorted(set(title_block) - known),
-                                      "fields_available": sorted(known)}
+                # Live 2026-11-20: title/number/project are fields of the attached
+                # records "Title Block Sheet Data" / "Title Block Project Data",
+                # not plug-in parameters. Write each field to the record that has it.
+                where = {}
+                for rec, fields in _attached_records(tb).items():
+                    if rec == TITLE_BLOCK:
+                        continue
+                    for f in fields:
+                        where.setdefault(f, rec)
+                done = []
+                for k, v in title_block.items():
+                    if k in where:
+                        vs.SetRField(tb, where[k], k, _str(v))
+                        done.append(k)
+                if done:
+                    vs.ResetObject(tb)
+                out["title_block"] = {"uuid": h_uuid(tb), "fields_set": sorted(done),
+                                      "fields_unknown": sorted(set(title_block) - set(done)),
+                                      "fields_available": sorted(where)}
     finally:
         if prev:
             _activate_layer(prev)
@@ -740,28 +755,23 @@ def create_sheet(name, layers, scale=48.0, hide_classes=None, title_block=None):
 
 
 # ---- view mapping (for screenshots) ---------------------------------------------
-# Not run live yet (2026-11-20): the coordinate space of ModelPt2DToScreenPt
-# (global screen points? window-relative? pixels on Retina?) and the value
-# GetProjection returns for Top/Plan are the things to verify first.
+# Live 2026-11-20 (VW 2026): GetProjection(ActLayer()) is 6 in Top/Plan;
+# ModelPt2DToScreenPt returns model coordinates unchanged, so the server maps
+# pixels from zoom, layer scale and the display density instead (viewmap.py).
 
-TOP_PLAN_PROJECTIONS = (6,)  # assumed: Vectorworks' kProjectionPlan
+TOP_PLAN_PROJECTIONS = (6,)
 
 
 def view_mapping():
-    """Where the view centre and the centre + 1 unit (x, then y) land on
-    screen, so the server can map screenshot pixels to drawing coordinates."""
+    """View centre, zoom (percent), layer scale and units per inch of the
+    active layer, for the server's screenshot mapping."""
     cx, cy = vs.GetVCenter()
     layer = vs.ActLayer()
     proj = vs.GetProjection(layer)
-    s0 = vs.ModelPt2DToScreenPt((cx, cy))
-    s1 = vs.ModelPt2DToScreenPt((cx + 1.0, cy))
-    s2 = vs.ModelPt2DToScreenPt((cx, cy + 1.0))
     units = vs.GetUnits()
-    return {"center": [cx, cy], "center_screen": [s0[0], s0[1]],
-            "unit_x_screen": [s1[0], s1[1]], "unit_y_screen": [s2[0], s2[1]],
-            "zoom": vs.GetZoom(), "layer_scale": vs.GetLScale(layer),
-            "projection": proj, "top_plan": proj in TOP_PLAN_PROJECTIONS,
-            "units": (units[4] or "").strip(), "screen": list(vs.GetScreen()),
+    return {"center": [cx, cy], "zoom": vs.GetZoom(), "layer_scale": vs.GetLScale(layer),
+            "units_per_inch": float(units[3]), "projection": proj,
+            "top_plan": proj in TOP_PLAN_PROJECTIONS, "units": (units[4] or "").strip(),
             "layer": _str(vs.GetLName(layer))}
 
 

@@ -56,15 +56,29 @@ def blocking_windows(windows: list[Window]) -> list[dict]:
     jobs, with a label for the level so the caller can say which it is."""
     out = []
     for w in windows:
-        if w.layer == 0 and not is_script_error_alert(w):
+        kind = normal_level_blocker(w) if w.layer == 0 else WINDOW_LEVELS.get(
+            w.layer, "other (level %d)" % w.layer)
+        if kind is None:
             continue
         d = w.as_dict()
-        if w.layer == 0:
-            d["kind"] = "alert (Script error: click OK in Vectorworks)"
-        else:
-            d["kind"] = WINDOW_LEVELS.get(w.layer, "other (level %d)" % w.layer)
+        d["kind"] = kind
         out.append(d)
     return out
+
+
+# Dialogs Vectorworks shows at the normal window level (live 2026-11-20):
+# their title gives them away, not their level.
+NORMAL_LEVEL_DIALOGS = {
+    "Object Preferences": "dialog (Object Preferences of a plug-in: click OK or Cancel in Vectorworks)",
+    "Script Errors": "dialog (Script Errors: click OK in Vectorworks)",
+}
+
+
+def normal_level_blocker(w: Window) -> str | None:
+    """Label for a level-0 window that still blocks jobs, else None."""
+    if is_script_error_alert(w):
+        return "alert (Script error: click OK in Vectorworks)"
+    return NORMAL_LEVEL_DIALOGS.get(w.title.strip())
 
 
 def is_script_error_alert(w: Window) -> bool:
@@ -76,7 +90,7 @@ def is_script_error_alert(w: Window) -> bool:
 
 def pick_window(windows: list[Window], title: str | None = None) -> Window:
     """The document window: normal layer, matching title if given, else the largest."""
-    normal = [w for w in windows if w.layer == 0 and not is_script_error_alert(w)]
+    normal = [w for w in windows if w.layer == 0 and normal_level_blocker(w) is None]
     if title:
         needle = title.lower()
         normal = [w for w in normal if needle in w.title.lower()]

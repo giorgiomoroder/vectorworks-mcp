@@ -280,17 +280,21 @@ def test_screenshot_with_mapping_adds_world_coordinates(monkeypatch, tmp_path):
     import json
     from vwmcp import screenshot as ss
 
+    from vwmcp import viewmap
+
     monkeypatch.setattr(ss, "screenshot", _fake_capture(tmp_path))
+    monkeypatch.setattr(viewmap, "canvas_bbox", lambda path: (50, 40, 450, 360))  # centre (250, 200)
+    monkeypatch.setattr(viewmap, "display_points_per_inch", lambda: 96.0)
     monkeypatch.setattr(server, "vw", lambda fn, **kw: {
-        "center": [10.0, 20.0], "center_screen": [500.0, 400.0], "unit_x_screen": [600.0, 400.0],
-        "unit_y_screen": [500.0, 300.0], "zoom": 100.0, "layer_scale": 48.0, "projection": 6,
-        "top_plan": True, "units": '"'})
+        "center": [10.0, 20.0], "zoom": 100.0, "layer_scale": 48.0, "units_per_inch": 1.0,
+        "projection": 6, "top_plan": True, "units": '"'})
     out = server.vw_screenshot(mapping=True)
     meta = json.loads(out[1].text)
-    assert meta["mapping"]["units_per_pixel"] == pytest.approx(0.02)
-    assert meta["mapping"]["image_center_world"] == [pytest.approx(11.0), pytest.approx(19.5)]
+    # image 500 px for a 1000 pt window: 0.5 px/pt; 96 ppi * 0.5 / 48 = 1 px per inch
+    assert meta["mapping"]["units_per_pixel"] == pytest.approx(1.0)
+    assert meta["mapping"]["image_center_world"] == [pytest.approx(10.0), pytest.approx(20.0)]
     # the pure follow-up uses the last mapping
-    assert server.vw_point_to_world(250, 175) == {"x": 11.0, "y": 20.0, "units": '"'}
+    assert server.vw_point_to_world(260, 190) == {"x": 20.0, "y": 30.0, "units": '"'}
 
 
 def test_screenshot_mapping_failure_is_soft(monkeypatch, tmp_path):
