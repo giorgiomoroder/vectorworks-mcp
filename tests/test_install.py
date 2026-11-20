@@ -23,7 +23,8 @@ def test_install_is_idempotent(tmp_path):
     target = tmp_path / "vwmcp"
     install.install_plugin(target)
     install.install_plugin(target)
-    assert sorted(p.name for p in target.iterdir()) == ["__init__.py", "vwmcp_bridge.py"]
+    assert sorted(p.name for p in target.iterdir()) == [
+        "__init__.py", "vs_safety.json", "vs_types.json", "vwmcp_bridge.py"]
 
 
 def test_install_writes_home_file_only_when_given(tmp_path):
@@ -64,3 +65,12 @@ def test_install_without_a_menu_file_prints_the_script(tmp_path, monkeypatch):
     monkeypatch.setattr(install, "bundled_menu_command", lambda: None)
     msg = install.install_plugin(tmp_path / "vwmcp")
     assert install.MENU_SCRIPT in msg and not (tmp_path / install.MENU_COMMAND_FILE).exists()
+
+
+def test_install_copies_the_type_and_safety_tables(tmp_path):
+    import json
+    target = tmp_path / "Plug-ins" / "vwmcp"
+    msg = install.install_plugin(target, menu_command=None)
+    assert (target / "vs_types.json").is_file() and (target / "vs_safety.json").is_file()
+    assert json.loads((target / "vs_types.json").read_text())["f"]["Rect"]["t"] == "PP"
+    assert "tables" in msg

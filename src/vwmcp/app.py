@@ -87,6 +87,14 @@ def bundled_bridge_source() -> str:
     return repo.read_text(encoding="utf-8")
 
 
+BRIDGE_TABLES = ("vs_types.json", "vs_safety.json")  # installed beside the bridge
+
+
+def bundled_data(name: str) -> str:
+    """A data file shipped in the package (src/vwmcp/data/<name>)."""
+    return resources.files("vwmcp").joinpath("data", name).read_text(encoding="utf-8")
+
+
 DOCUMENT_HINT = ("document: name of the document this call is meant for (as vw_document_info / "
                  "vw_list_documents show it; \".vwx\" may be left out). If another document is "
                  "active, nothing is changed and the call fails; use vw_switch_document first.")

@@ -153,3 +153,29 @@ def test_version_choice_check(tmp_path):
     assert doctor.check_version_choice("2027", environ={"VWMCP_VW_VERSION": "2027"}, apps=root).ok
     assert doctor.check_version_choice("2026", environ={}, apps=root, configured={"2026", "2027"}).ok
     assert doctor.check_version_choice("2025", environ={"VWMCP_VW_VERSION": "2025"}, apps=root).ok is None
+
+
+def test_bridge_check_reports_missing_or_outdated_tables(tmp_path):
+    home = setup_home(tmp_path, bridge_version=app.EXPECTED_BRIDGE_VERSION)
+    target = install.plugin_dir("2026", platform="darwin", home=home)
+    (target / "vs_safety.json").unlink()
+    c = run(home, home / ".vwmcp")["bridge"]
+    assert c.ok is False and "vs_safety.json" in c.detail and "install-plugin" in c.fix
+    (target / "vs_safety.json").write_text("{}")  # present but not the bundled one
+    c = run(home, home / ".vwmcp")["bridge"]
+    assert c.ok is False and "outdated" in c.detail
+
+
+def test_runtime_check_counts_cancelled_jobs_and_stale_libraries(tmp_path):
+    home = setup_home(tmp_path, bridge_version=app.EXPECTED_BRIDGE_VERSION)
+    root = home / ".vwmcp"
+    (root / "jobs").mkdir(parents=True)
+    (root / "lib").mkdir()
+    old = time.time() - 8 * 86400
+    for p in (root / "jobs" / "x.cancelled", root / "lib" / "abc.py"):
+        p.write_text("{}")
+        os.utime(p, (old, old))
+    c = run(home, root)["runtime"]
+    assert c.ok and "1 cancelled jobs" in c.detail and "1 stale libraries" in c.detail  # harmless
+    run(home, root, fix=True)
+    assert not (root / "jobs" / "x.cancelled").exists() and not (root / "lib" / "abc.py").exists()

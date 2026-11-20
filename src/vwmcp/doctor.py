@@ -90,6 +90,12 @@ def check_bridge(home: Path, vw_version: str, platform: str, root: Path | None =
     found = m.group(1) if m else "unknown"
     if found != app.EXPECTED_BRIDGE_VERSION:
         return Check("bridge", False, f"{found} installed, server expects {app.EXPECTED_BRIDGE_VERSION}", fix)
+    for name in app.BRIDGE_TABLES:
+        table = folder / name
+        if not table.exists():
+            return Check("bridge", False, f"{found} at {folder}, but {name} (vs.* check table) is missing", fix)
+        if table.read_text(encoding="utf-8") != app.bundled_data(name):
+            return Check("bridge", False, f"{found} at {folder}, but {name} is outdated", fix)
     home_file = folder / install.HOME_FILE
     serves = Path(home_file.read_text(encoding="utf-8").strip()).expanduser() if home_file.exists() else None
     if root is not None:
@@ -181,18 +187,19 @@ def check_runtime(root: Path, now: float, fix: bool) -> Check:
     stale_results = _older_than(root / "results", "*.json", STALE_RESULT_AGE, now)
     stale_jobs = _older_than(root / "jobs", "*.json", STALE_JOB_AGE, now)
     stale_jobs += _older_than(root / "jobs", "*.tmp", STALE_JOB_AGE, now)
-    if not stale_results and not stale_jobs:
+    # .cancelled: jobs the server gave up on before Vectorworks took them (never ran)
+    cancelled = _older_than(root / "jobs", "*.cancelled", STALE_JOB_AGE, now)
+    # lib/<sha>.py: helper libraries sent by reference; old ones belong to older servers
+    libs = _older_than(root / "lib", "*.py", 7 * 86400, now)
+    counts = (f"{len(stale_results)} stale results, {len(stale_jobs)} stale jobs, "
+              f"{len(cancelled)} cancelled jobs, {len(libs)} stale libraries")
+    if not stale_results and not stale_jobs and not cancelled and not libs:
         return Check("runtime", True, f"{root} clean")
     if fix:
-        for p in stale_results + stale_jobs:
+        for p in stale_results + stale_jobs + cancelled + libs:
             p.unlink(missing_ok=True)
-        return Check("runtime", True, f"removed {len(stale_results)} stale results, {len(stale_jobs)} stale jobs")
-    return Check(
-        "runtime",
-        True,
-        f"{len(stale_results)} stale results, {len(stale_jobs)} stale jobs in {root} (harmless)",
-        "vwmcp doctor --fix removes them",
-    )
+        return Check("runtime", True, f"removed {counts}")
+    return Check("runtime", True, f"{counts} in {root} (harmless)", "vwmcp doctor --fix removes them")
 
 
 def check_log(root: Path, now: float) -> Check:

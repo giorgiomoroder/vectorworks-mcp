@@ -55,6 +55,8 @@ def install_plugin(
         '"""vectorworks-mcp bridge package (see vwmcp_bridge.py)."""\n', encoding="utf-8"
     )
     (target / "vwmcp_bridge.py").write_text(app.bundled_bridge_source(), encoding="utf-8")
+    for name in app.BRIDGE_TABLES:  # the vs.* type and safety tables the bridge checks against
+        (target / name).write_text(app.bundled_data(name), encoding="utf-8")
     home_file = target / HOME_FILE
     if home:
         home_file.write_text(str(home) + "\n", encoding="utf-8")
@@ -62,7 +64,8 @@ def install_plugin(
     else:
         home_file.unlink(missing_ok=True)
         where = ""
-    msg = f"Installed vwmcp bridge {app.EXPECTED_BRIDGE_VERSION} to {target}{where}\n"
+    msg = (f"Installed vwmcp bridge {app.EXPECTED_BRIDGE_VERSION} with the vs.* type and safety "
+           f"tables to {target}{where}\n")
     vsm = menu_command if menu_command is not None else bundled_menu_command()
     dest = target.parent / MENU_COMMAND_FILE
     if dest.exists():
