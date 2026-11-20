@@ -190,17 +190,23 @@ on a throwaway doc and record findings in `docs/vs-notes.md`:
 - [ ] Lower priority: architecture drawing tools (walls via `SetComponentWidth` /
       `SetWallCornerHeights`, doors), only if venue shells are needed often.
 
-2026-11-20 batch (Michael: "all five options"), built offline, **none run live**:
-- [x] a. `vw_mvr_check` (field names `Fixture ID`, `GDTF Fixture Name`, `Fixture
-      Mode`, `GetSymbolType` values to confirm live).
-- [x] b. `vw_apply_class_standard`, `vw_create_sheet` (viewport scale object
-      variable 1003 and Title Block Border parameter names to confirm live).
-- [x] c. `vw_screenshot(mapping=True)` + `vw_point_to_world`.
+2026-11-20 batch (Michael: "all five options"). Live on VW 2026 the same afternoon
+(test_mcp.vwx, 2027 open beside it): class standard, sheet + title block, platform,
+ramp, soft goods, band, screenshot mapping all verified and reverted (vs-notes
+"Live findings 2026-11-20"). Still unverified live: `vw_mvr_check` and
+`vw_import_hookup` (need the Bobby Lee plot open), the `.mcpb` install.
+- [~] a. `vw_mvr_check` built; field names `Fixture ID`, `GDTF Fixture Name`,
+      `Fixture Mode` and `GetSymbolType` values still to confirm on a real plot.
+- [x] b. `vw_apply_class_standard`, `vw_create_sheet` (live: object variable 1003 =
+      scale, title/number/project in the Title Block Sheet/Project Data records).
+- [x] c. `vw_screenshot(mapping=True)` + `vw_point_to_world` (live-calibrated: display
+      density x zoom / scale, view centre = centre of the white drawing area).
 - [x] d. `vw_doctor`, `vw_ping` lists documents, session-start instructions,
       skill, `.mcpb` bundle (validated with the official schema; round trip over
       stdio from the unzipped bundle worked).
-- [~] e. `vw_import_hookup`, `vw_insert_platform`, `vw_insert_band` built; hoists
-      and truss corners wait for live reads.
+- [~] e. `vw_import_hookup` (not live), `vw_insert_platform`, `vw_insert_band` (live);
+      hoists and truss corners wait for live reads. Composite inserts should restore
+      the user's selection like `insert_lighting_devices` does.
 
 Beta hardening:
 - [ ] Gather tester reports (issue forms: bug + "works on my setup", label `compatibility`).

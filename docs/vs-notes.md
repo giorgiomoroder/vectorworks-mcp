@@ -83,6 +83,42 @@ menu command gets a fresh Python state (module globals don't persist).
   (hybrid) as the VectorScript reference says; `vw_mvr_check` flags 0.
   Verify on a fixture symbol and on a plain 2D symbol.
 
+## More live findings 2026-11-20 (VW 2026, test_mcp.vwx)
+
+- **Screenshot mapping** (`viewmap.py`): Vectorworks' zoom is true size on
+  the physical display: pixels per drawing unit = display points/inch
+  (`CGDisplayScreenSize`, 127.5 on this MacBook) x capture px per point (2 on
+  Retina) x zoom/100 / (layer scale x units per inch). The view centre
+  (`GetVCenter`) is the centre of the white drawing area (found in the
+  capture by sampling near-white rows/columns). Verified: a 2x1 platform at
+  (0..96, 0..96) at zoom 201 % on 1:48 measured 10.72 px/inch (predicted
+  10.69) and its corner landed within 3 px; a second capture matched the
+  rulers. A capture taken right after a job can show a stale window (the
+  deck was not painted yet): fit/redraw, then capture.
+- **Soft Goods**: `CreateCustomObjectPath("Soft Goods", path, None)` creates
+  the object and consumes the path (length 216 for a 120+96 L), height
+  applied, but opens the plug-in's **Object Preferences** dialog (250x1002,
+  window level 0) and the job waits until the user clicks OK (367 s here).
+  `CreateCustomObjectN("Soft Goods", p, 0, False)` + `SetCustomObjectPath(h,
+  polyline)` gives the identical object (extents 123 x 99 x 120) silently.
+- **Stage Ramp** (`vw_insert_stage_ramp`, first live run): 24" stage, 144"
+  ramp with rails: centre (0, -71, 30), size 38.5 x 142 x 60; reverted.
+- **Platform** (`vw_insert_platform`): decks at (24, 48) and (72, 48), the
+  "Simple" 3-step flight centred on the front edge at (48, -18), descending
+  -y; one revert removed all three. Inserting selects the new objects
+  (Object Info showed "3 Objects"): the composite tools do not restore the
+  user's selection yet (`vw_insert_lighting_devices` does).
+- **Band** (`vw_insert_band`): `TextJust(2)`, `TextOrigin`, `CreateText`,
+  `LNewObj` make a centred text under each symbol; 2 symbols + 2 texts,
+  reverted as one step; `vw_import_resource` revert removed the symbol.
+- **Save As under a tool's feet**: the journal keys entries by document
+  name, so after "Untitled 1" was saved as `test_mcp.vwx` the platform entry
+  could not be reverted by `vw_revert_last` (guard refused, correctly); the
+  entry was popped and its ops replayed by hand. Idea: remember the window
+  id or offer `journal_document=`.
+- `vw_switch_document` / `document=` guard worked throughout with 2027
+  open beside 2026; nothing reached 2027.
+
 ## Sheets (live 2026-11-20, VW 2026)
 
 - `CreateVP(sheet_layer_handle)` with the sheet active makes a viewport (type
