@@ -173,6 +173,13 @@ class FakeDoc:
         v.CreateCustomObjectN = lambda name, pt, rot, pref: self._create(86, pio=name, x=pt[0], y=pt[1]) if name in PIO_FIELDS else 0
         v.Symbol = lambda name, pt, rot: self._create(15, name=name, x=pt[0], y=pt[1])
         v.LNewObj = lambda: max(self.objects)
+        # path plug-ins (Soft Goods): the polyline becomes the object's path
+        v.OpenPoly = lambda: self.events.append(("openpoly",))
+        v.ClosePoly = lambda: self.events.append(("closepoly",))
+        v.BeginPoly = lambda: setattr(self, "poly", [])
+        v.AddPoint = lambda p: self.poly.append(list(p))
+        v.EndPoly = lambda: self._create(21, points=self.poly, x=self.poly[0][0], y=self.poly[0][1])
+        v.CreateCustomObjectPath = lambda name, path, prof: self._path_pio(name, path)
 
     def _create(self, t, **kw):
         h = self.next
@@ -184,6 +191,12 @@ class FakeDoc:
             o["fields"] = {f: "" for f in PIO_FIELDS[o["pio"]]}
         self.objects[h] = o
         return h
+
+    def _path_pio(self, name, path):
+        if name not in PIO_FIELDS or path not in self.objects:
+            return 0
+        pts = self.objects.pop(path)["points"]
+        return self._create(86, pio=name, path=pts, x=pts[0][0], y=pts[0][1])
 
     def _delete(self, h):
         self.events.append(("del", h))
@@ -665,3 +678,46 @@ def test_stage_ramp_rejects_bad_input(doc, fake_vs):
     with pytest.raises(ToolError, match="stage_height"):
         drawing.vw_insert_stage_ramp(0, 0, 0, ramp_length=20)
     assert not [o for o in doc.objects.values() if o["pio"] == "Stage Ramp"]
+
+
+# ---- soft goods -----------------------------------------------------------------
+
+SOFT_FIELDS = ["GdsFunct", "CurtHeight", "OpenWidth", "OpenFrom", "Traveler", "AddPipe", "AddTrack",
+               "Purpose", "Position"]
+
+
+def test_soft_goods_along_a_path(doc, fake_vs):
+    PIO_FIELDS["Soft Goods"] = SOFT_FIELDS
+    fake_vs.GetUnits = lambda: (25, 3, 2, 1.0, '"', " sq ft")
+    fake_vs.Get3DCntr = lambda hh: ((120, 50), 60)
+    fake_vs.Get3DInfo = lambda hh: (100, 240, 120)
+    out = drawing.vw_insert_soft_goods([[0, 0], [240, 0], [240, 100]], 120, opening_width=48,
+                                       open_from="Center", traveler=True, add_track=True,
+                                       purpose="US BLACKS", class_name="Truss")
+    assert out["path_length"] == 340 and out["center"] == [120, 50, 60] and out["class"] == "Truss"
+    o = [o for o in doc.objects.values() if o["pio"] == "Soft Goods"][0]
+    assert o["path"] == [[0, 0], [240, 0], [240, 100]] and o["class"] == "Truss"
+    f = o["fields"]
+    assert f["GdsFunct"] == "Curtain" and f["CurtHeight"] == "3048mm" and f["OpenWidth"] == "1219.2mm"
+    assert f["OpenFrom"] == "Center" and f["Traveler"] == "True" and f["AddTrack"] == "True"
+    assert f["AddPipe"] == "False" and f["Purpose"] == "US BLACKS"
+    assert not [o for o in doc.objects.values() if o["type"] == 21]  # the polyline was consumed
+    assert ("openpoly",) in doc.events and ("closepoly",) in doc.events
+    drawing.vw_insert_soft_goods([[0, 0], [0, 1000]], 96, function="Pipe-and-Drape", add_pipe=True)
+    f2 = doc.objects[max(doc.objects)]["fields"]
+    assert f2["GdsFunct"] == "Pipe-and-Drape" and f2["AddPipe"] == "True" and f2["OpenWidth"] == ""
+    generic.vw_revert_last()
+    generic.vw_revert_last()
+    assert not [o for o in doc.objects.values() if o["pio"] == "Soft Goods"]
+
+
+def test_soft_goods_rejects_bad_input(doc, fake_vs):
+    PIO_FIELDS["Soft Goods"] = SOFT_FIELDS
+    with pytest.raises(ToolError, match="at least two"):
+        drawing.vw_insert_soft_goods([[0, 0]], 100)
+    with pytest.raises(ToolError, match="height"):
+        drawing.vw_insert_soft_goods([[0, 0], [10, 0]], 0)
+    with pytest.raises(ToolError, match="opening_width"):
+        drawing.vw_insert_soft_goods([[0, 0], [10, 0]], 100, opening_width=-1)
+    assert not doc.events or not [e for e in doc.events if e[0] == "openpoly"]
+    assert not [o for o in doc.objects.values() if o["type"] == 21]

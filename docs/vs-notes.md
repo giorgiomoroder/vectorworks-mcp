@@ -320,8 +320,18 @@ but `CreateCustomObjectN("Stage Deck", ...)` is the plan), `Stage Steps`,
   `TreadDepth`, `RailLeft`/`RailRight` (booleans), `RailHeight`.
 - `Soft Goods` is a path plug-in: `GdsFunct` (Curtain | Truss Border |
   Pipe-and-Drape), `CurtHeight`, `TopTrim`/`BottomTrim`, `OpenFrom`,
-  `OpenWidth`, `DraperyWidth`, `Traveler`... Needs a path, so a different
-  creation call (`CreateCustomObjectPath`); not started.
+  `OpenWidth`, `DraperyWidth`, `Traveler`, `AddPipe`, `AddTrack`, `TrackWidth`,
+  `ShowMarkers` (None | Start | Both), pipe-and-drape: `SliderMod` (6'-10',
+  2'-3', ..., Custom), `HardwareToInclude`, `BaseSize`, `Show3DUprights`,
+  `StckDrpWdth`, `DrpOverlap`, `TiedFullness`; fabric: `SoftOpts` (Opaque |
+  Scrim | Image), `Material`, `Color`, `TopFin` (Rope Ties | S Hooks | ... |
+  Unfinished), `BtmFin` (Sewn-In Chain | Pipe Pocket ... | Sewn-In Lead
+  Tape), `Fullness`, weight fields, Spotlight data block, `MasterClass`
+  "SoftGoods". `vw_insert_soft_goods` (2026-11-20) builds an open polyline
+  (`OpenPoly`/`BeginPoly`/`AddPoint`/`EndPoly`, `ClosePoly` after) and calls
+  `CreateCustomObjectPath("Soft Goods", path, None)`; **not run live yet**.
+  To verify first: the path is consumed by the plug-in (else delete it),
+  `None` is accepted as the nil profile group, `OpenFrom` popup values.
 
 ## Stage ramp (default object read live on 2027, 2026-11-19)
 

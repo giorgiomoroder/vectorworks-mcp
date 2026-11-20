@@ -1191,6 +1191,76 @@ def insert_stage_ramp(x, y, stage_height, rotation=0.0, tread_width=None, ramp_l
     return {"document": current_document(), "uuid": h_uuid(h)}
 
 
+# ---- soft goods ------------------------------------------------------------------
+# Spotlight's Soft Goods plug-in is a *path* object: a curtain, truss border
+# or pipe-and-drape run along a polyline. Field names and popup choices from
+# the .vso string table (vs-notes "Parameter names"); creation call not yet
+# run live (2026-11-20).
+
+SOFT_GOODS = "Soft Goods"
+SOFT_GOODS_FUNCTIONS = ["Curtain", "Truss Border", "Pipe-and-Drape"]
+
+
+def _open_polyline(points):
+    """An open polyline through `points` ([x, y] pairs, document units)."""
+    vs.OpenPoly()
+    try:
+        vs.BeginPoly()
+        for x, y in points:
+            vs.AddPoint((x, y))
+        vs.EndPoly()
+    finally:
+        vs.ClosePoly()  # back to the default for later polys
+    h = vs.LNewObj()
+    if _is_nil(h):
+        raise RuntimeError("could not create the path polyline")
+    return h
+
+
+def insert_soft_goods(points, height, function="Curtain", opening_width=None, open_from=None,
+                      traveler=False, add_pipe=False, add_track=False, purpose=None,
+                      position=None, layer=None):
+    """A Soft Goods run (curtain, truss border or pipe-and-drape) along the
+    open polyline through `points` (at least two [x, y], document units),
+    `height` tall. The path polyline becomes the plug-in's path."""
+    if len(points) < 2:
+        raise ValueError("points needs at least two [x, y] pairs")
+    if height <= 0:
+        raise ValueError("height must be positive")
+    if function not in SOFT_GOODS_FUNCTIONS:
+        raise ValueError("function must be one of %s" % ", ".join(SOFT_GOODS_FUNCTIONS))
+    if opening_width is not None and opening_width <= 0:
+        raise ValueError("opening_width must be positive")
+    if layer:
+        _activate_layer(layer)
+    params = {"GdsFunct": function, "CurtHeight": "%gmm" % _doc_to_mm(height),
+              "Traveler": "True" if traveler else "False",
+              "AddPipe": "True" if add_pipe else "False",
+              "AddTrack": "True" if add_track else "False"}
+    if opening_width is not None:
+        params["OpenWidth"] = "%gmm" % _doc_to_mm(opening_width)
+    if open_from:
+        params["OpenFrom"] = open_from
+    if purpose:
+        params["Purpose"] = purpose
+    if position:
+        params["Position"] = position
+    path = _open_polyline(points)
+    h = vs.CreateCustomObjectPath(SOFT_GOODS, path, None)
+    if _is_nil(h):
+        vs.DelObject(path)
+        raise RuntimeError("Soft Goods plug-in did not create an object")
+    try:
+        _write_fields(h, SOFT_GOODS, params)  # class: see create_pio, applied in a 2nd job
+    except Exception:
+        vs.DelObject(h)
+        raise
+    length = 0.0
+    for (x0, y0), (x1, y1) in zip(points, points[1:]):
+        length += ((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5
+    return {"document": current_document(), "uuid": h_uuid(h), "path_length": length}
+
+
 # ---- geometry export (read-back) -----------------------------------------------
 
 def _pt(p, nd):

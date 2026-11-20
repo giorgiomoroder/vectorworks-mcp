@@ -387,6 +387,43 @@ def vw_insert_stage_ramp(
 
 
 @mcp.tool(annotations=WRITE)
+def vw_insert_soft_goods(
+    points: list[list[float]],
+    height: float,
+    function: Literal["Curtain", "Truss Border", "Pipe-and-Drape"] = "Curtain",
+    opening_width: float | None = None,
+    open_from: str | None = None,
+    traveler: bool = False,
+    add_pipe: bool = False,
+    add_track: bool = False,
+    purpose: str | None = None,
+    position: str | None = None,
+    layer: str | None = None,
+    class_name: str | None = None,
+    document: str | None = None,
+) -> dict:
+    """A Spotlight Soft Goods run (curtain, truss border or pipe-and-drape)
+    along the open polyline through `points` ([[x, y], ...], at least two,
+    document units), `height` tall (document units). A curtain can have an
+    opening: `opening_width` and `open_from` (the plug-in's popup text, e.g.
+    "Center"); `traveler` marks it as a traveler; `add_pipe` / `add_track`
+    draw the hanging hardware. Returns the object's 3D centre and size plus
+    the path length. One vw_revert_last removes it (the path goes with it).
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    app.require_document(document)
+    out = vw("insert_soft_goods", points=points, height=height, function=function,
+             opening_width=opening_width, open_from=open_from, traveler=traveler,
+             add_pipe=add_pipe, add_track=add_track, purpose=purpose, position=position, layer=layer)
+    out = _journal(out, "vw_insert_soft_goods", [{"op": "created", "uuid": out["uuid"]}])
+    if class_name:  # second job: see vw_create_pio
+        vw("set_objects_class", uuids=[out["uuid"]], cls=class_name)
+        out["class"] = class_name
+    out.update(vw("object_extents", uuids=[out["uuid"]])[0])
+    return out
+
+
+@mcp.tool(annotations=WRITE)
 def vw_insert_stage_steps(
     x: float,
     y: float,

@@ -91,7 +91,7 @@ before changing anything that touches Vectorworks.
 
 ```bash
 uv sync
-uv run pytest -q          # 168 tests; fake executor runs the real bridge code
+uv run pytest -q          # 170 tests; fake executor runs the real bridge code
 uv run vwmcp              # stdio server
 uv build                  # wheel must contain vwmcp/_plugin/vwmcp_bridge.py
 ```
@@ -137,11 +137,16 @@ on a throwaway doc and record findings in `docs/vs-notes.md`:
       back in a follow-up job (vs-notes "Stage decks"). `vw_insert_stage_steps`
       (live 2026-11-17): a flight from a stage edge, height/steps/rails/
       stringer length. `vw_insert_stage_ramp` (2026-11-19, built from the
-      default object read live on 2027; not yet run live as a tool). Still
-      to do: soft goods (`Soft Goods` is a path plug-in: `GdsFunct` Curtain |
-      Truss Border | Pipe-and-Drape, `CurtHeight`, `OpenFrom`, `OpenWidth`,
-      `Traveler`, pipe-and-drape hardware fields; needs
-      `CreateCustomObjectPath` with a path, live), rails on the outer edges
+      default object read live on 2027; not yet run live as a tool).
+      `vw_insert_soft_goods` (2026-11-20, from the .vso string table:
+      `GdsFunct` Curtain | Truss Border | Pipe-and-Drape, `CurtHeight`,
+      `OpenFrom`, `OpenWidth`, `Traveler`, `AddPipe`, `AddTrack`; path via
+      OpenPoly/BeginPoly/AddPoint/EndPoly + `CreateCustomObjectPath(name,
+      path, None)`; **not run live**: whether the path is consumed and
+      whether None works as the nil profile group are the first things to
+      check). Still to do: `OpenFrom` popup values beyond "Center" (read
+      the default object live), pipe-and-drape hardware fields,
+      rails on the outer edges
       of a platform, round decks, a one-call "platform with steps" composite.
 - [ ] **Band members and instruments.** Blocked on content (2026-11-17): no
       people or backline library is on this Mac (`Libraries/Visualization/People`
