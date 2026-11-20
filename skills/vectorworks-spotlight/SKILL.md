@@ -26,14 +26,20 @@ work, so the first rule is: know which document you are in, and say so.
 - **Undo is `vw_revert_last`**, one tool call at a time, repeatable.
   Vectorworks merges back-to-back scripted edits into one Cmd-Z step, so never
   promise Cmd-Z granularity. `vw_delete_objects` cannot be reverted: ask first.
-- **Dialogs block everything.** A wrong `vs.*` call opens a modal **Script
-  Errors** window; an open right-click menu stalls jobs too. When a call times
-  out, `vw_screenshot` shows what is in front (`in_front`) without touching
-  the app; the user has to close it.
+- **Dialogs block everything.** An open dialog or right-click menu stalls
+  jobs; after 15 s the request is cancelled (it never runs later) and you are
+  told. `vw_screenshot` shows what is in front (`in_front`) without touching
+  the app; the user has to close it. Never call a `vs.*` function that opens
+  a dialog (`vw_vs_lookup` shows `safety: interactive`) unless the user
+  wants that dialog and you pass `allow_dialogs=True`.
 - **Raw Python (`vw_exec_python`) is the last resort.** Prefer the typed
-  tools. If you must: Python 3.9 syntax, `vw_vs_lookup` for signatures,
-  `vw_lint` runs automatically; created objects are tracked for revert but
-  changes to existing objects are not.
+  tools. If you must: Python 3.9 syntax, `vw_vs_lookup` for signatures and
+  parameter types, `vw_lint` runs automatically, and inside Vectorworks every
+  `vs.*` call is checked (a bad one comes back as `VSArgumentError` /
+  `VSUnsafeError`, no Script Errors window); created objects are tracked for
+  revert but changes to existing objects are not.
+- **No document open = no job.** The trigger refuses while only the start
+  screen shows (a job then crashes Vectorworks). Ask the user to open one.
 - Writes assign classes in a second step and re-read what Vectorworks kept:
   trust the returned `after` / `not_applied`, not your intent.
 
@@ -65,6 +71,19 @@ after and anything Spotlight overrode.
 3. `vw_import_hookup(path, key=..., dry_run=False, document=...)`. One
    revertible step. A row that matches no device or several stops everything;
    use `key="position+unit_number"` when channels are not unique yet.
+
+### Lightwright round trip
+
+1. `vw_lightwright_snapshot()`: if `available` is false, the user turns on
+   Spotlight > Preferences > Lightwright > automatic data exchange (full
+   export once), saves, clicks away and back.
+2. Read fixtures by `uid` with the exported fields (works even while a dialog
+   blocks the bridge; data is as of the last export).
+3. To write: `vw_lightwright_patch(changes)` dry run first, then
+   `dry_run=False`; the user clicks into Vectorworks so it imports the patch;
+   verify with `vw_list_lighting_devices`. Never change `Symbol_Name` to one
+   no fixture uses; a type change needs `Wattage`. Prefer
+   `vw_set_lighting_device_fields` when the bridge works.
 
 ### MVR export pre-flight
 1. `vw_mvr_check` (optionally `position=`). Errors block or empty the MVR:
@@ -137,7 +156,9 @@ All but delete are revertible.
 | Symptom | Do |
 |---|---|
 | Timeout, "has not answered the previous request" | `vw_screenshot`: a dialog or menu is open; ask the user to close it |
-| Script Errors window | A raw `vs.*` call had wrong arguments; user clicks OK; check `vw_vs_lookup` |
+| Script Errors window | Should not happen with bridge 0.2; user clicks OK; `vw_doctor` (old bridge or missing tables? `fix=True`, then the user restarts Vectorworks) |
+| "No document is open (only the start screen)" | Ask the user to open a drawing; nothing was sent |
+| Write refused: "WrongDocument" | The user switched documents between your calls; `vw_switch_document` back, or ask |
 | `vw_ping` fails or warns | `vw_doctor` (and `vw_doctor(fix=True)` to reinstall the bridge); then restart Vectorworks and ping again |
 | Write refused: "active document is ..." | `vw_switch_document` or ask the user; never write to the wrong file |
 | Object landed in the wrong place | `vw_revert_last` immediately, then re-read before trying again |

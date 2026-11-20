@@ -133,6 +133,8 @@ Vectorworks restart. Claude Code users keep using the installer script.
 | `vw_lighting_device_report` | Paperwork export (CSV or JSON), naturally sorted |
 | `vw_mvr_check` | MVR export pre-flight: devices without GDTF fixture or mode, missing or duplicate Fixture IDs, unpatched or overlapping DMX addresses, loose positions, 2D-only symbols. Read-only; the export itself stays in the File menu |
 | `vw_import_hookup` | Channel hookup from a spreadsheet export (.csv/.tsv): rows matched by channel or position + unit, columns written as device fields; dry run first, then one revertible step |
+| `vw_lightwright_snapshot` | Every Lighting Device as Spotlight's Lightwright Data Exchange last exported it (the XML next to the saved file): works even while a dialog blocks the other tools |
+| `vw_lightwright_patch` | Change device fields through that exchange file (Lightwright-style sparse patch, applied when Vectorworks regains focus); dry run by default, guarded against the known ways to damage a plot, revertible |
 | `vw_list_library_files`, `vw_list_library_resources` | Browse the Vectorworks and user libraries on disk (lighting, truss, people, stage decks) and list the symbols inside a file |
 | `vw_import_resource` | Import one symbol or plug-in style from a library file into the document |
 | `vw_insert_truss_run` | A straight truss run from a library symbol: pieces end to end at a trim height, linked into a Braceworks system, named position |
@@ -157,7 +159,7 @@ Vectorworks restart. Claude Code users keep using the installer script.
 | `vw_revert_last` | Undo exactly the last Claude edit in this drawing (repeatable), including objects a `vw_exec_python` call created |
 | `vw_exec_python` | Run any Vectorworks Python (`vs.*`) and get stdout, value, traceback; records created objects for revert; optional timeout |
 | `vw_exec_file` | Same as `vw_exec_python`, for a script file on the Mac |
-| `vw_lint` | Check Python for Vectorworks without running it: syntax, wrong `vs.*` argument counts, deprecated calls (the things that open the blocking "Script Errors" dialog). `vw_exec_python` runs this check first |
+| `vw_lint` | Check Python for Vectorworks without running it: syntax, wrong `vs.*` argument counts, deprecated calls, and functions a published safety sweep found to crash or hang Vectorworks or to open a dialog. `vw_exec_python` runs this check first |
 | `vw_screenshot` | The document window as an image (plus window geometry and any dialog or open menu in front); works even while a dialog blocks the bridge; `mapping=True` adds the pixel-to-drawing-coordinates mapping |
 | `vw_point_to_world` | Drawing x, y of a pixel in the last mapped screenshot (Top/Plan), no job |
 | `vw_doctor` | Setup check from inside Claude: bridge, menu command file, Claude configs, process, stale files, log; `fix=True` reinstalls a missing bridge |
@@ -216,12 +218,22 @@ anywhere except through your Claude app.
   source of truth. Edits to Universe or DMX Address are applied through it
   automatically, and the tool re-reads each device afterwards and reports
   anything Spotlight overrode.
+- **No more "Script Errors" boxes (bridge 0.2).** Inside Vectorworks every
+  `vs.*` call Claude makes is checked first against a signature table
+  (argument count and types) and a safety table of functions known to crash
+  or hang Vectorworks or to open a dialog. A bad call comes back to Claude as
+  an error instead of a modal window you have to click away while nothing
+  else can run. Dialog-opening functions need `allow_dialogs=True` on purpose.
 - **Dialogs and open menus block Claude.** If a Vectorworks dialog, or even a
-  right-click menu, is open, Claude's request waits and then times out with a
-  message saying so. Close it and ask again; `vw_screenshot` can tell Claude
-  what is in the way.
-- **Just launched?** Claude waits until Vectorworks has been open ~30 seconds.
-  Scripts sent while Vectorworks is still starting can crash it.
+  right-click menu, is open, Claude's request waits 15 seconds, is cancelled
+  (it will not run later by surprise) and Claude is told why. Close it and
+  ask again; `vw_screenshot` can tell Claude what is in the way.
+- **Right document, every time.** A write names its document, and the bridge
+  checks that name inside Vectorworks right before running each job, so a
+  document switched in between is refused rather than drawn into.
+- **Just launched, or no document open?** Claude waits until Vectorworks has
+  been open ~30 seconds, and refuses to send anything while only the start
+  screen shows. Scripts sent in either state can crash Vectorworks.
 - **Log file.** Bridge errors and timeouts are logged to `~/.vwmcp/vwmcp.log`;
   `vwmcp doctor` summarizes them.
 - **Screenshots** need Screen Recording permission for the app running the
@@ -238,7 +250,8 @@ When reporting a problem, please use the
 | Anything, first step | `uvx --from git+https://github.com/giorgiomoroder/vectorworks-mcp vwmcp doctor` (add `--fix` to clear stale job files). Ask Claude for a screenshot to see what Vectorworks is showing. |
 | "did not pick up the job" | Open a drawing, close any dialog or open menu (a right-click menu counts), and check **MCP Run Job** is in a menu (step 2, part 4). Run it once by hand; it should do nothing silently. |
 | "is not running" / "still starting" | Open Vectorworks and wait a few seconds. |
-| A "Script Errors" window in Vectorworks | Usually raw Python calling a `vs` function with the wrong arguments. Click OK; ask Claude to check the signature with `vw_vs_lookup`. |
+| A "Script Errors" window in Vectorworks | Should be rare since bridge 0.2 (calls are checked first). Click OK; ask Claude to run `vw_doctor`: an old bridge or missing check tables beside it are the usual cause, and `vw_doctor(fix=True)` reinstalls them (then restart Vectorworks once so it loads the new bridge). |
+| "No document is open (only the start screen)" | Open a drawing. Jobs sent to the start screen crash Vectorworks, so Claude refuses them. |
 | Nothing works and you don't know why | Ask Claude to "check the Vectorworks MCP setup" (`vw_doctor`; with fix it reinstalls a missing bridge). It never touches Vectorworks itself. |
 | `vw_ping` warns about bridge version | Re-run the installer (or `uvx --from git+https://github.com/giorgiomoroder/vectorworks-mcp vwmcp install-plugin`). |
 | Nothing happens, no macOS permission prompt | System Settings ▸ Privacy & Security ▸ Automation: allow Claude (or Terminal) to control Vectorworks 2026. |

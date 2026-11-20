@@ -2,23 +2,44 @@
 
 ## Pieces
 
-- **`vw-plugin/vwmcp/vwmcp_bridge.py`**: installed in the user Plug-ins
-  folder (already on Vectorworks' `sys.path`). `run_pending()` claims the
-  oldest job in `~/.vwmcp/jobs/` by atomic rename, `exec`s it with `vs` in
-  scope, captures stdout, the last expression (or `result`), and any
-  traceback, and writes `~/.vwmcp/results/<id>.json` atomically. One job per
-  call. Version-stamped (`BRIDGE_VERSION`); `vw_ping` compares it.
+- **`vw-plugin/vwmcp/vwmcp_bridge.py`** (0.2.0): installed in the user
+  Plug-ins folder (already on Vectorworks' `sys.path`) together with two
+  tables, `vs_types.json` and `vs_safety.json` (see NOTICE). `run_pending()`
+  claims the oldest job in `~/.vwmcp/jobs/` by atomic rename (`.json` →
+  `.running`; the server's cancel rename to `.cancelled` wins if it came
+  first), checks the job's `document` against `GetFName`/`GetFPathName`
+  (`WrongDocument`, `never_ran`), `exec`s the job's helper libraries (sent by
+  sha, compiled once per session) and code with a **checked `vs`** in scope:
+  a `CheckedVS` proxy validates argument count and types of every `vs.*`
+  call against the type table (only where the live docstring's parameter
+  count agrees) and refuses functions the safety table lists as crash, hang
+  or interactive (the last unless the job has `allow_dialogs`). Captures
+  stdout, the last expression (or `result`), and any traceback, and writes
+  `~/.vwmcp/results/<id>.json` atomically. One job per call. Version-stamped
+  (`BRIDGE_VERSION`); `vw_ping` and `vw_doctor` compare it. Vectorworks
+  caches the imported module: after an upgrade, restart Vectorworks once.
 - **"MCP Run Job" menu command**: two lines of Python that call
-  `run_pending()`. Created once by the user in the Plug-in Manager (`.vsm`
-  files can't be authored as text).
+  `run_pending()`. Shipped as `MCP Run Job.vsm`; the user drags it into a menu.
 - **`src/vwmcp/`**: the MCP server.
-  - `client.py` writes jobs, fires the trigger, waits for results, withdraws
-    unclaimed jobs on timeout (so they never run later by surprise), and
-    logs failures to `~/.vwmcp/vwmcp.log`.
-  - `trigger.py`: macOS trigger (below).
+  - `client.py` writes jobs, fires the trigger, waits in two phases: up to
+    15 s for the claim (re-firing the trigger every 2 s while an osascript
+    is not in flight; unclaimed → renamed `.cancelled`, `BridgeTimeout` with
+    `never_ran`), then up to `VWMCP_TIMEOUT` (120 s) for the result, asking
+    the trigger every 2 s whether Vectorworks still runs. Learns the bridge
+    version from results (`supports_libs`), writes helper libraries to
+    `~/.vwmcp/lib/<sha>.py` (`lib_ref`), housekeeps leftovers, and logs to
+    `~/.vwmcp/vwmcp.log`. Job keys: `code`, `created`, `ttl`, `protocol`,
+    optional `libs`, `check`, `document`, `allow_dialogs`.
+  - `trigger.py`: macOS trigger (below); also refuses when the window list
+    shows only the start screen (a job then crashes Vectorworks).
   - `vwlib.py`: helper library executed *inside* Vectorworks, sent with
-    every typed tool call so the installed bridge never needs updating.
+    every typed tool call (inline for a 0.1 bridge, by reference from 0.2)
+    so the installed bridge never needs updating for new tools.
     Must stay Python 3.9-compatible.
+  - `app.py`: `DOCUMENT` contextvar set by `require_document`; `vw()` puts
+    it into every job of that tool call, so the bridge re-checks the
+    document right before running (the pre-check alone had a race: the user
+    can switch documents between two of our jobs).
   - `journal.py`: per-call revert journal.
   - `tools/generic.py`, `tools/spotlight.py`: the MCP tools.
 

@@ -62,7 +62,8 @@ Set these in the server's `env` block if you need them:
 | `VWMCP_VW_VERSION` | the single installed version, else `2026` | Vectorworks version: app name, user Plug-ins and Libraries folders. Set it explicitly when several versions are installed (`vwmcp doctor` checks) |
 | `VWMCP_APP` | `Vectorworks <version>` | Application name AppleScript talks to (override only if yours is renamed) |
 | `VWMCP_HOME` | `~/.vwmcp` | Job, result, journal and log folder |
-| `VWMCP_TIMEOUT` | `30` | Seconds to wait for Vectorworks per request |
+| `VWMCP_CLAIM_TIMEOUT` | `15` | Seconds to wait for Vectorworks to take a job at all (a dialog or open menu blocks it); then the job is cancelled and never runs |
+| `VWMCP_TIMEOUT` | `120` | Seconds to wait for the result once Vectorworks took the job (long inserts and scripts) |
 | `VWMCP_MIN_UPTIME` | `30` | Seconds after launch before Claude may send requests |
 
 The bridge in Vectorworks reads `vwmcp_home.txt` next to itself to know

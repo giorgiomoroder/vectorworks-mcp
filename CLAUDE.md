@@ -41,6 +41,16 @@ before changing anything that touches Vectorworks.
   `viewmap.py`: screenshot pixel ↔ drawing coordinates (`vw_screenshot(mapping=True)`,
   `vw_point_to_world`). `platform.py`: step placement for `vw_insert_platform`.
   Tool group `drawing` = class standard + `vw_create_sheet`.
+- `src/vwmcp/lightwright.py` (2026-11-20, offline): `vw_lightwright_snapshot` /
+  `vw_lightwright_patch`, Spotlight's Lightwright Data Exchange XML next to the
+  `.vwx` (format from Gribiche64/vectorworks-bridge PROTOCOL.md): read without
+  a job, sparse Update patches with the protocol's guards, revert = inverse
+  patch from the journaled envelope (op `lightwright`, handled server side in
+  `vw_revert_last`). **Not run live yet.**
+- `src/vwmcp/data/vs_types.json`, `vs_safety.json` + `scripts/import-vs-*.py`
+  + `NOTICE`: the tables the bridge checks against (see hard rules).
+  `docs/superpowers/plans/2026-11-20-safety-batch.md` is the plan; its "Live
+  check" list is what the next safe session runs.
 - `skills/vectorworks-spotlight/SKILL.md`: recipes for Claude (tested: every `vw_*`
   it names must exist). `scripts/build-mcpb.py` + `mcpb_main.py`: Claude Desktop
   extension bundle (MCPB 0.4, `uv` runtime, tool list generated); `vw_doctor` is the
@@ -80,14 +90,31 @@ before changing anything that touches Vectorworks.
   crash reports in `~/Library/Logs/DiagnosticReports/` (`Vectorworks-*.ips`)
   as ground truth for crashes.
 - A wrong `vs.*` signature shows a modal **Script Errors** dialog instead of
-  raising; the user must click OK before anything else runs. An open
-  right-click menu blocks jobs the same way; `vw_screenshot` lists what is
-  in front (`in_front`) without touching the app. `vslint.py` (from the
-  PO4 fork, bgst84) checks syntax, vs.* argument counts and deprecated
-  calls before `vw_exec_python` / `vw_exec_file` send anything (also
-  `vw_lint`, `vwmcp lint FILE`); the table is `data/vs_api_<year>.json`,
-  refreshed with `vwmcp dump-api` from a running Vectorworks. Argument
-  *types* are not checked, so still check signatures with `vw_vs_lookup`.
+  raising; the user must click OK before anything else runs (Michael:
+  "annoying", and it eats time when he does not see it). Since bridge 0.2.0
+  (2026-11-20) the bridge wraps `vs` in `CheckedVS`: argument count and
+  types are checked against `data/vs_types.json` (from Keystone, MIT) where
+  the live docstring agrees on the parameter count, and functions listed in
+  `data/vs_safety.json` (from the stevenmorgan94 sweep, MIT) as crash/hang
+  are refused, interactive ones unless the job has `allow_dialogs`. Both
+  tables are installed beside the bridge (`install-plugin`, `vw_doctor`
+  checks). Argument *values* and handle object types are still unchecked.
+  An open right-click menu blocks jobs the same way; `vw_screenshot` lists
+  what is in front (`in_front`) without touching the app. `vslint.py` (from
+  the PO4 fork, bgst84) checks syntax, vs.* argument counts, deprecated
+  calls and the safety classes before `vw_exec_python` / `vw_exec_file`
+  send anything (also `vw_lint`, `vwmcp lint FILE`); the signature table is
+  `data/vs_api_<year>.json`, refreshed with `vwmcp dump-api`.
+- Jobs sent while only the start screen is open (no document) crash
+  Vectorworks 2026 and 2027 (Keystone's finding). `trigger.py` refuses via
+  the CoreGraphics window list (`screenshot.has_document_window`); the
+  start-screen window title set is `START_SCREEN_TITLES` (verify live).
+- Job protocol since 0.2 (client.py): 15 s claim phase, then cancel by
+  renaming the job to `.cancelled` (never runs late), re-trigger every 2 s,
+  `target_alive` probe, result wait `VWMCP_TIMEOUT` (120 s). Write tools
+  put the document into every job (`app.DOCUMENT` contextvar set by
+  `require_document`); the bridge refuses with `WrongDocument` (`never_ran`).
+  After a bridge upgrade Vectorworks must be restarted once (module cache).
 - `vs.GetBBox` is projected in 3D views; use `vwlib._extent3d` (`Get3DCntr` /
   `Get3DInfo`) for geometry that must not depend on the user's current view.
 - `vs.Layer(name)` is the only layer-activation call in VW 2026 (no
@@ -104,7 +131,7 @@ before changing anything that touches Vectorworks.
 
 ```bash
 uv sync
-uv run pytest -q          # 170 tests; fake executor runs the real bridge code
+uv run pytest -q          # ~310 tests; fake executor runs the real bridge code
 uv run vwmcp              # stdio server
 uv build                  # wheel must contain vwmcp/_plugin/vwmcp_bridge.py
 ```

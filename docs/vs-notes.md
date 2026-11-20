@@ -577,3 +577,61 @@ objects, a 3D layer), `vw_render_layers`, `vw_duplicate_layer` + revert
   view shows only projected gray boxes (`bbox_view` from `GetBBox`); it is a
   2D plan check, not a 3D view.
 - Type codes seen on the 3D layer without a `TYPE_NAMES` entry: 24 and 113.
+
+## Safety tables and the checked `vs` (2026-11-20, built offline)
+
+Bridge 0.2.0 wraps `vs` in a proxy (`CheckedVS` in `vwmcp_bridge.py`, after
+Keystone's design, MIT). What it catches before Vectorworks sees the call:
+
+- argument **count** and **types** against `vs_types.json` (3,142 functions
+  with type codes H/R/I/B/S/P/Q/V/C/F, from the Vectorworks developer-
+  scripting stub via Keystone). Only functions whose live docstring
+  ("Definition: ... vs.Name(a, b)") has the same parameter count are checked;
+  a point may be one tuple or two numbers, a colour must be one tuple (three
+  loose numbers are silently ignored by Vectorworks), a string where a handle
+  is expected gets the hint to use `GetObjectByUuid`;
+- functions the stevenmorgan94 sweep (Vectorworks 2027, ~2,800 functions
+  against throwaway documents) classified as **crash** (11: `UprString`,
+  `TBB_AttachRecords`, `AddVectorFillLayer`, `CC_GetCircuitSource/Dest`,
+  `DisplayLayerScaleDialog`, `DisplayOrganizationDialog`,
+  `DisplayContextHelpOfCurrentPlugin`, `Plant_ReplacePlantParam`,
+  `SetConstraintValue`, `SetTexSpaceEndCap`), **hang** (`RetrieveOpenGLPrefs`,
+  `RefreshResManager`) or **interactive** (31 dialog openers such as
+  `EditProperties`, `RunColorPaletteMgr`, `OLDHoistSectionDlg`): refused, the
+  interactive ones unless the job has `allow_dialogs`. 99 functions have a
+  recorded bad case; `wrong-object-type:crash` (the `LDevice_*`, gradient,
+  light, roof and wall families) is a lint warning: a handle of the wrong
+  object type crashes them, a null-handle check is not enough.
+
+Not checked: argument values, handle object types, `Begin*`/`End*` pairing
+(unpaired `BeginPoly`/`EndSym` crash). Keystone also found: a job sent while
+only the start screen is open segfaults 2026 and 2027 (first `vs` call).
+
+**Live check still owed** (next session on test_mcp.vwx): bridge 0.2.0
+loaded after a Vectorworks restart (`vw_ping` shows 0.2.0);
+`vw_exec_python("vs.ColorIndexToRGB((1000,2000,3000))")` returns
+`VSArgumentError` with no dialog (this was the exact call that produced the
+Script error alert on 2026-11-20); the start-screen window title (close all
+documents, `vw_screenshot` window list) to confirm `START_SCREEN_TITLES`;
+claim/cancel with a right-click menu open; `WrongDocument` from a job with
+`document={"name": "nope"}`; `last_timing.vw_s` with vwlib by reference.
+
+## Lightwright Data Exchange (format from Gribiche64/vectorworks-bridge, not run live here)
+
+Spotlight > Preferences > Lightwright > "Use automatic Lightwright Data
+Exchange" makes Vectorworks write `<document>.xml` beside the `.vwx` on
+losing focus and watch it for patches stamped `Lightwright`. `<SLData>` >
+`<ExportFieldList>` (the exported fields, configurable) > `<InstrumentData>`
+with one `<UID_1246_1_1_0_0>` block per fixture (Device_Type, Symbol_Name,
+Inst_Type, Layer, Class, Channel, Dimmer, Absolute_Address, Position,
+Purpose, Color, Template, Wattage "700 W", Unit_Number, User_Field_1..6,
+Lightwright_ID, X/Y/Z_Location_mm, nested Accessories). A patch = envelope
+with the ExportFieldList copied verbatim + per-fixture blocks with only the
+changed fields, `Lightwright_ID`, `UID`, `AppStamp Lightwright`, 14-digit UTC
+`TimeStamp`, `Action Update`; written in place (FSEvents), applied 1 to 2 s
+after Vectorworks regains focus. Hazards from that project: an unknown
+`Symbol_Name` breaks fixture selection drawing-wide and permanently (restore
+a backup); `Wattage` is not updated on a type swap; `Delete` actions from a
+stale `.lw6` removed fixtures. Our tools refuse all three. **To verify live:**
+the exact XML file name Vectorworks 2026 writes, that a Channel patch lands,
+and the inverse patch on revert.
