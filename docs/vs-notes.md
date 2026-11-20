@@ -62,6 +62,22 @@ menu command gets a fresh Python state (module globals don't persist).
   (hybrid) as the VectorScript reference says; `vw_mvr_check` flags 0.
   Verify on a fixture symbol and on a plain 2D symbol.
 
+## Sheets and class standards (not run live, 2026-11-20)
+
+- `vwlib.create_sheet`: `CreateVP(sheet_layer)` while the sheet is active,
+  `SetVPLayerVisibility(vp, layer_h, 0 | -1)`, `SetVPClassVisibility(vp,
+  name, -1)`, scale via `SetObjectVariableReal(vp, 1003, scale)` (**index
+  assumed**: read 1003 back on a hand-made viewport first), `UpdateVP`. A new
+  viewport is assumed to show Top/Plan. Title block: `CreateCustomObjectN(
+  "Title Block Border", (0, 0), 0, False)`; the tool only writes parameters
+  that exist in the object's parametric record and reports the available
+  names, so the first live run tells us what "Sheet Title" etc. are called.
+- `vwlib.apply_class_attrs`: `RGBToColorIndex(r, g, b)` with 0-65535
+  components, `SetClPenFore/SetClFillFore(name, index)`, `SetClFPat(name, 1)`
+  solid / `0` none, `SetClLW(name, mils)`, `SetClUseGraphic(name, True)`;
+  `NameClass` creates and activates (restored afterwards). Readers
+  `GetClPenFore` … `ColorIndexToRGB` feed the `class_attrs` revert op.
+
 ## Drawing and 3D
 
 - Walls from `vs.Wall(...)` have one component; `SetWallThickness` and

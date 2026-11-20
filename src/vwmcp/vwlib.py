@@ -636,6 +636,70 @@ def set_view(view=None, fit=False):
     return {"view": view, "fit": fit}
 
 
+# ---- sheet layers --------------------------------------------------------------
+# Not run live yet (2026-11-20). Object variable 1003 = viewport scale (real)
+# and the Title Block Border parameter names are the things to verify first.
+
+TITLE_BLOCK = "Title Block Border"
+VP_SCALE = 1003
+
+
+def _record_field_names(h):
+    rec = vs.GetParametricRecord(h)
+    if _is_nil(rec):
+        return []
+    return [_str(vs.GetFldName(rec, i)) for i in range(1, vs.NumFields(rec) + 1)]
+
+
+def create_sheet(name, layers, scale=48.0, hide_classes=None, title_block=None):
+    """A sheet layer with one viewport showing the given design layers at
+    1:`scale` (Top/Plan, the viewport default), classes in `hide_classes`
+    hidden in it, and optionally a Title Block Border whose parameters
+    `title_block` ({field: value}) are written where the field exists.
+    The user's active layer is restored at the end. Deleting the sheet layer
+    (revert) removes the viewport and title block with it."""
+    kinds = dict((l["name"], l["kind"]) for l in list_layers())
+    missing = [l for l in layers if l not in kinds]
+    if missing:
+        raise LookupError("no such design layer(s): %s" % ", ".join(missing))
+    not_design = [l for l in layers if kinds[l] != "design"]
+    if not_design:
+        raise ValueError("not design layers: %s" % ", ".join(not_design))
+    prev = _str(vs.GetLName(vs.ActLayer()))
+    create_layer(name, "sheet", activate=True)  # sheet stays active for CreateVP
+    sheet = vs.GetLayerByName(name)
+    try:
+        vp = vs.CreateVP(sheet)
+        if _is_nil(vp):
+            raise RuntimeError("CreateVP returned nothing on sheet %r" % name)
+        for lname, kind in kinds.items():
+            if kind != "design":
+                continue
+            vs.SetVPLayerVisibility(vp, vs.GetLayerByName(lname), 0 if lname in layers else -1)
+        for cls in hide_classes or []:
+            vs.SetVPClassVisibility(vp, cls, -1)
+        vs.SetObjectVariableReal(vp, VP_SCALE, float(scale))
+        vs.UpdateVP(vp)
+        out = {"document": current_document(), "sheet": name, "viewport": h_uuid(vp),
+               "scale": float(scale), "layers_shown": list(layers), "title_block": None}
+        if title_block is not None:
+            tb = vs.CreateCustomObjectN(TITLE_BLOCK, (0, 0), 0, False)
+            if _is_nil(tb):
+                out["title_block_error"] = "%r plug-in did not create an object" % TITLE_BLOCK
+            else:
+                known = set(_record_field_names(tb))
+                ok = dict((k, v) for k, v in title_block.items() if k in known)
+                if ok:
+                    _write_fields(tb, TITLE_BLOCK, ok)
+                out["title_block"] = {"uuid": h_uuid(tb), "fields_set": sorted(ok),
+                                      "fields_unknown": sorted(set(title_block) - known),
+                                      "fields_available": sorted(known)}
+    finally:
+        if prev:
+            _activate_layer(prev)
+    return out
+
+
 # ---- libraries and resources ------------------------------------------------------
 # Type codes for BuildResourceList: 16 symbol definition (also plug-in styles,
 # which are symbol definitions wrapping one plug-in object), 47 record format.

@@ -144,6 +144,7 @@ Vectorworks restart. Claude Code users keep using the installer script.
 | `vw_insert_lighting_devices` | Hang fixtures from a fixture symbol on a position at a spacing, as real Lighting Devices with unit numbers, channels, purpose; verified after insert |
 | `vw_create_pio`, `vw_get_pio_parameters`, `vw_set_pio_parameters` | Place and edit plug-in objects (TrussItem, Lighting Device, positions…) by parameter name |
 | `vw_apply_class_standard` | A tidy class set with colours and line weights (Lighting-*, Rigging-*, Stage-*, Soft Goods, Audio, Video, Scenery, People, Venue-*, Notes): creates what is missing, optionally restyles the rest; revertible |
+| `vw_create_sheet` | A sheet layer with a viewport of chosen design layers at a scale, classes hidden in it, optional title block with sheet title/number/project; revertible (not yet run live) |
 | `vw_create_layer`, `vw_create_class`, `vw_move_objects`, `vw_delete_objects` | Document housekeeping; all but delete are revertible |
 | `vw_set_view` | Top/Plan, standard 3D views, fit to objects (e.g. before a screenshot) |
 | `vw_list_documents` / `vw_switch_document` | List the open documents and bring a saved one to the front (AppleScript, no extra permission). Write tools take an optional `document=` and refuse if another document is active |

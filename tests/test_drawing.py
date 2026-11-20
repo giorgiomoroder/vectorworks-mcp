@@ -757,3 +757,33 @@ def test_apply_class_standard_journals_created_and_restyled(fake, monkeypatch):
 def test_apply_class_standard_unknown_name(fake):
     with pytest.raises(ToolError, match="spotlight"):
         drawing.vw_apply_class_standard("nope")
+
+
+# ---- vw_create_sheet -------------------------------------------------------------
+
+def test_create_sheet_journals_the_sheet_layer(fake, monkeypatch):
+    seen = {}
+
+    def fake_vw(fn, **kw):
+        if fn == "create_sheet":
+            seen.update(kw)
+            return {"document": "Plot.vwx", "sheet": "Sheet-1", "viewport": "vp-1", "scale": 48.0,
+                    "layers_shown": ["Lighting"], "title_block": None}
+        return fake(fn, **kw)
+
+    for mod in (app, generic, drawing):
+        monkeypatch.setattr(mod, "vw", fake_vw)
+    out = drawing.vw_create_sheet("Sheet-1", layers=["Lighting"], scale=48, hide_classes=["Notes"],
+                                  title="Light Plot", sheet_number="LX-1")
+    assert seen["layers"] == ["Lighting"] and seen["hide_classes"] == ["Notes"]
+    assert seen["title_block"] == {"Sheet Title": "Light Plot", "Sheet Number": "LX-1"}
+    assert out["viewport"] == "vp-1"
+    generic.vw_revert_last()
+    assert last_revert_ops(fake) == [{"op": "layer", "name": "Sheet-1"}]
+
+
+def test_create_sheet_needs_layers_and_positive_scale(fake):
+    with pytest.raises(ToolError, match="layers"):
+        drawing.vw_create_sheet("S", layers=[])
+    with pytest.raises(ToolError, match="scale"):
+        drawing.vw_create_sheet("S", layers=["L"], scale=0)

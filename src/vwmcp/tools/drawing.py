@@ -170,6 +170,46 @@ def vw_apply_class_standard(
 
 
 @mcp.tool(annotations=WRITE)
+def vw_create_sheet(
+    name: str,
+    layers: list[str],
+    scale: float = 48,
+    hide_classes: list[str] | None = None,
+    title: str | None = None,
+    sheet_number: str | None = None,
+    project: str | None = None,
+    document: str | None = None,
+) -> dict:
+    """A presentation sheet: a sheet layer `name` with one viewport that shows
+    the given design layers at 1:`scale` (48 = 1/4" = 1'-0", 96 = 1/8", 50 or
+    100 for metric) in Top/Plan, with `hide_classes` (e.g. ["Notes",
+    "Lighting-Focus Points"]) hidden in that viewport. With `title`,
+    `sheet_number` or `project` a Title Block Border is added at the sheet
+    origin and those fields written where the title block style has them
+    (the result lists fields_set / fields_unknown / fields_available). The
+    user's active layer is restored. One vw_revert_last deletes the sheet with
+    its viewport and title block. Follow up with vw_set_view / vw_screenshot
+    after the user switches to the sheet, or vw_render_layers for a picture.
+    document: optional guard; if given and another document is active,
+    nothing changes (use vw_switch_document first)."""
+    if not layers:
+        raise ToolError("layers: name at least one design layer to show in the viewport")
+    if scale <= 0:
+        raise ToolError("scale must be positive (48 = 1/4\" = 1')")
+    app.require_document(document)
+    tb = {}
+    if title is not None:
+        tb["Sheet Title"] = title
+    if sheet_number is not None:
+        tb["Sheet Number"] = sheet_number
+    if project is not None:
+        tb["Project Name"] = project
+    out = vw("create_sheet", name=name, layers=layers, scale=scale, hide_classes=hide_classes,
+             title_block=tb or None)
+    return _journal(out, "vw_create_sheet", [{"op": "layer", "name": name}])
+
+
+@mcp.tool(annotations=WRITE)
 def vw_delete_objects(uuids: list[str], document: str | None = None) -> dict:
     """Delete objects by uuid. All-or-nothing: if any uuid is unknown nothing is
     deleted. NOT revertible with vw_revert_last (only Cmd-Z in Vectorworks),
