@@ -69,6 +69,15 @@ class MacTrigger:
         self.poll_interval = poll_interval
         self._pending: subprocess.Popen | None = None
 
+    def in_flight(self) -> bool:
+        """An osascript we started has not returned yet (the client then
+        does not re-fire the trigger while a job waits to be claimed)."""
+        return self._pending is not None and self._pending.poll() is None
+
+    def target_alive(self) -> bool:
+        """Vectorworks is still running (asked while a claimed job runs)."""
+        return self.uptime() is not None
+
     def _previous_still_running(self) -> bool:
         # osascript can return a moment after the result file lands (e.g. while
         # Vectorworks redraws), so allow a grace period before calling it stuck.

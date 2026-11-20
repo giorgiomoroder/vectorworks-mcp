@@ -83,3 +83,13 @@ def test_waits_briefly_for_previous_event_to_finish(root):
     t()
     t()  # previous proc finishes within the grace period
     assert len(procs) == 2
+
+
+def test_in_flight_and_target_alive(root):
+    t, procs = make(root, uptime=120)
+    assert t.in_flight() is False
+    t()
+    assert t.in_flight() is True  # FakeProc(done=False)
+    assert t.target_alive() is True
+    t.uptime = lambda: None
+    assert t.target_alive() is False
