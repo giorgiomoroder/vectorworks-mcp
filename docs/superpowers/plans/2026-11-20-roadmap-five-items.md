@@ -38,7 +38,9 @@ band (live-dependent, built last).
 - In-app helpers are added to `vwlib.py` behind a `# ---- <section>` comment, with a
   docstring saying what is live-tested and what is not. After editing `vwlib.py` run
   `uv run pytest -q tests/test_calls.py tests/test_vslint.py` (3.9 parse + lint).
-- README tool table row + `config.TOOL_GROUPS` entry for every new tool; `docs/vs-notes.md`
+- README tool table row for every new tool; `config.TOOL_GROUPS`: spotlight for A, E1;
+  a new `drawing` group for B1, B2, E2; stage for E3; none for `vw_doctor`,
+  `vw_point_to_world`; `docs/vs-notes.md`
   gets a "(not run live)" note per new `vs.*` pattern, replaced by findings after the live pass.
 - Commit after each task: `git add -A && git commit` with a one-line subject naming the tool.
 
@@ -115,8 +117,7 @@ default on the Bobby Lee plot (216 devices).
 - [ ] **Step 2: fail, implement, pass.**
 - [ ] **Step 3: tool `vw_import_hookup(path, key="channel", column_map=None, dry_run=True,
   document=None)`**: `dry_run=True` (default) returns the plan and the fields that exist in
-  the document (`vw("ld_field_names")` wrapper needed: add `vwlib.ld_field_names` to the
-  callable surface, it already exists); `dry_run=False` requires `document`, then reuses
+  the document (`vw("ld_field_names")`; `calls.call` runs any vwlib function, no registry); `dry_run=False` requires `document`, then reuses
   `vw_set_lighting_device_fields(updates, document)` so journaling and `not_applied`
   verification come free. Selector failures (`_resolve_devices`) surface as the tool error
   text listing which rows did not match; nothing changes in that case (all-or-nothing is
@@ -166,7 +167,9 @@ default on the Bobby Lee plot (216 devices).
   `["${__dirname}/server/main.py"]`, `env` `{"PYTHONPATH": "${__dirname}/server/lib",
   "VWMCP_VW_VERSION": "${user_config.vw_version}"}`, `user_config.vw_version` (string,
   default "2026"), `compatibility.platforms ["darwin"]`, `compatibility.runtimes.python
-  ">=3.11"`. `server/main.py` = `from vwmcp.server import main; main()`.
+  ">=3.11"`. `server/main.py` checks `sys.version_info >= (3, 11)` first and prints a one-line
+  fix (install Python 3.11+ from python.org/Homebrew, or use the uvx config) before
+  `from vwmcp.server import main; main()`, because `python3` on macOS is often 3.9.
 - [ ] `build-mcpb.py`: `uv build` wheel → `pip install --target build/mcpb/server/lib
   dist/*.whl` (pulls `mcp` and deps) → write manifest with the version from
   `pyproject.toml` → zip to `dist/vectorworks-mcp-<version>.mcpb`. Test: manifest renders
@@ -198,7 +201,9 @@ default on the Bobby Lee plot (216 devices).
   previously active class, vs-notes), `RGBToColorIndex` → `SetClPenFore`, `SetClFillFore` +
   `SetClFPat(1)` or 0, `SetClLW`, `SetClUseGraphic(True)`; returns before-attrs per class
   and the list created. Revert op `class_attrs` restores attrs; existing `class` op deletes
-  created classes.
+  created classes. **`vwlib.revert` resolves the handle before dispatching on `kind`**
+  (fallback `GetObjectByUuid(op["uuid"])` → KeyError for a name-keyed op): give
+  `class_attrs` its own branch in that first if/elif, like `class`.
 - [ ] Tool `vw_apply_class_standard(standard="spotlight", only=None, overwrite=False,
   document=None)`: `overwrite=False` only creates missing classes; `True` also restyles
   existing ones. Journaled. Tests: journal ops; `only` filter; unknown standard error.
@@ -207,8 +212,9 @@ default on the Bobby Lee plot (216 devices).
 ### B2 `vw_create_sheet` (sheet layer + viewport + title block)
 **Files:** `vwlib.py` (`create_sheet`), `tools/drawing.py`, `tests/test_drawing.py`
 - [ ] vwlib `create_sheet(name, layers, scale, classes_hidden=None, title_block=None,
-  view="top_plan")`: `CreateLayer(name, 2)` (sheet, becomes active: remember and restore
-  the previous active layer with `_activate_layer`), `vp = CreateVP(sheet_handle)`,
+  view="top_plan")`: reuse `create_layer(name, "sheet")` (already `CreateLayer(name, 2)`), but keep the
+  sheet active until the viewport and title block are made, then restore the previous
+  active layer, `vp = CreateVP(sheet_handle)`,
   `SetVPLayerVisibility(vp, layer_h, 0)` for the listed design layers and -1 for others,
   `SetVPClassVisibility(vp, cls, -1)` for `classes_hidden`, scale via
   `SetObjectVariableReal(vp, 1003, scale)` (**index not verified**: candidate list 1003
@@ -236,8 +242,8 @@ viewport shows Top/Plan by default, 2026 vs 2027.
   gives screen pixels per drawing unit and the center's screen position **without
   guessing dpi or Retina factor**; plus `GetScreen()` (screen bounds). Return all numbers.
 - [ ] `viewmap.Mapping.from_view(view, window, image_size)`: screen point → window-relative
-  → image pixel (window is in screen points; image may be scaled by `max_width`:
-  factor = image_width / window.width). `to_world(px, py)`, `to_pixel(x, y)`, `valid`
+  → image pixel (window is in screen points; the PNG may be shrunk to `max_width` or be Retina 2x:
+  read the real pixel width from the PNG IHDR header, bytes 16-24, stdlib only). `to_world(px, py)`, `to_pixel(x, y)`, `valid`
   (Top/Plan only). Tests with synthetic numbers.
 - [ ] `vw_screenshot(..., mapping=False)`: when True runs one job (`view_mapping`) and adds
   `mapping` to the text part (origin, units per pixel, projection); fails soft with
@@ -253,9 +259,11 @@ viewport shows Top/Plan by default, 2026 vs 2027.
 rails via Stage Deck `Rail*` fields read live), `tools/drawing.py`, `tests/test_drawing.py`
 - [ ] Tool: `vw_insert_platform(width, depth, height, x, y, columns, rows, steps_on=
   "front"|"back"|"left"|"right"|None, step_count=None, rails=None, rotation=0, purpose,
-  cls, document)`; one journal entry covering decks + steps; placement math for the steps
-  (centre of the chosen edge, facing outward) is server-side and unit-tested
-  (`platform.step_origin(...)`).
+  cls, document)`; one journal entry covering decks + steps; the tool computes `(step_x, step_y,
+  step_rotation)` with `platform.step_origin(...)` (pure, unit-tested) and passes them to
+  one vwlib job `insert_platform` that inserts decks then steps and returns both uuid
+  lists for a single journal entry; pass through `layer`, `structure`, `kind` like the
+  deck/steps tools.
 - [ ] Commit. **Live check:** on the throwaway doc together with ramp and soft goods.
 
 ## Task E3: hoists, truss corners/towers, band placement (live-dependent)
@@ -274,6 +282,10 @@ rails via Stage Deck `Rail*` fields read live), `tools/drawing.py`, `tests/test_
 ---
 
 ## Done criteria
+
+- E3 ships nothing until the live reads (hoist and corner parameters go to vs-notes
+  first); `vw_insert_band` may be built offline (insert_symbol + CreateText).
+- The D2 skill names MVR checks exactly as `mvr.NEEDS` does (no_gdtf, no_mode, ...).
 
 - `uv run pytest -q` green; `uv build` wheel still contains the bridge; CI green.
 - README tool table and `docs/claude-config.md` updated; `CLAUDE.md` roadmap boxes ticked
