@@ -603,6 +603,22 @@ def vw_revert_last(document: str | None = None) -> dict:
         entry = journal.pop(document)
     except JournalError as e:
         raise ToolError(str(e)) from e
+    ops = entry["ops"] or []
+    if ops and all(op.get("op") == "lightwright" for op in ops):
+        # Written through the Lightwright exchange file, reverted the same way
+        # (server side: the inverse patch from the journaled envelope).
+        from vwmcp import lightwright
+
+        try:
+            n = 0
+            for op in ops:
+                lightwright.write_patch(Path(op["path"]), lightwright.render_patch(op["envelope"], op["changes"]))
+                n += len(op["changes"])
+        except OSError as e:
+            journal.record(entry["document"], entry["tool"], entry["ops"])  # put it back
+            raise ToolError(f"Could not write the inverse patch: {e}") from e
+        return {"reverted_tool": entry["tool"], "lightwright": True, "changes": n,
+                "note": "Inverse patch written; Vectorworks applies it when it next gains focus."}
     try:
         result = vw("revert", ops=entry["ops"])
     except ToolError:

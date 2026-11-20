@@ -124,3 +124,57 @@ def test_import_hookup_apply_delegates_to_set_fields(tmp_path, monkeypatch):
     assert seen == {"updates": [{"channel": "1", "fields": {"Purpose": "Key"}}], "document": "Plot"}
     assert out["result"] == [{"uuid": "u", "after": {"Purpose": "Key"}}]
     assert out["dry_run"] is False
+
+
+# ------------------------------------------------------------- Lightwright
+
+
+def test_lightwright_snapshot_reports_when_the_exchange_is_off(monkeypatch, tmp_path):
+    (tmp_path / "Plot.vwx").write_bytes(b"")
+    monkeypatch.setattr(spotlight, "vw", lambda fn, **kw: {"name": "Plot.vwx", "path": str(tmp_path / "Plot.vwx")})
+    out = spotlight.vw_lightwright_snapshot()
+    assert out["available"] is False and "Spotlight Preferences" in out["hint"]
+
+
+def test_lightwright_snapshot_filters_by_position_and_fields(monkeypatch, tmp_path):
+    from test_lightwright import SAMPLE  # bare module name: tests/ has no __init__.py
+    (tmp_path / "Plot.vwx").write_bytes(b"")
+    (tmp_path / "Plot.xml").write_text(SAMPLE)
+    monkeypatch.setattr(spotlight, "vw", lambda fn, **kw: {"name": "Plot.vwx", "path": str(tmp_path / "Plot.vwx")})
+    out = spotlight.vw_lightwright_snapshot(position="lx 1", fields=["Channel"])
+    assert out["available"] and out["count"] == 2
+    assert out["fixtures"][0] == {"uid": "1001.1.1.0.0", "Channel": "101"}
+
+
+def test_lightwright_patch_dry_run_writes_nothing(monkeypatch, tmp_path):
+    from test_lightwright import SAMPLE
+    (tmp_path / "Plot.vwx").write_bytes(b"")
+    xml = tmp_path / "Plot.xml"
+    xml.write_text(SAMPLE)
+    monkeypatch.setattr(spotlight, "vw", lambda fn, **kw: {"name": "Plot.vwx", "path": str(tmp_path / "Plot.vwx")})
+    monkeypatch.setattr(spotlight.app, "require_document", lambda d: None)
+    out = spotlight.vw_lightwright_patch([{"uid": "1001.1.1.0.0", "fields": {"Channel": "5"}}])
+    assert out["dry_run"] is True and "<Channel>5</Channel>" in out["patch"]
+    assert xml.read_text() == SAMPLE
+
+
+def test_lightwright_patch_apply_writes_and_journals_and_reverts(monkeypatch, tmp_path):
+    from test_lightwright import SAMPLE
+    from vwmcp.journal import Journal
+    from vwmcp.tools import generic
+    (tmp_path / "Plot.vwx").write_bytes(b"")
+    xml = tmp_path / "Plot.xml"
+    xml.write_text(SAMPLE)
+    j = Journal(tmp_path / "journal.jsonl")
+    fake_vw = lambda fn, **kw: ({"name": "Plot.vwx", "path": str(tmp_path / "Plot.vwx")}
+                               if fn == "document_info" else "Plot.vwx")
+    monkeypatch.setattr(spotlight, "vw", fake_vw)
+    monkeypatch.setattr(generic, "vw", fake_vw)
+    monkeypatch.setattr(spotlight.app, "require_document", lambda d: None)
+    monkeypatch.setattr(spotlight.app, "get_journal", lambda: j)
+    out = spotlight.vw_lightwright_patch([{"uid": "1001.1.1.0.0", "fields": {"Channel": "5"}}], dry_run=False)
+    assert out["dry_run"] is False and "<Channel>5</Channel>" in xml.read_text()
+    assert j.peek("Plot.vwx")["ops"][0]["op"] == "lightwright"
+    back = generic.vw_revert_last()
+    assert back["reverted_tool"] == "vw_lightwright_patch" and back["lightwright"] is True
+    assert "<Channel>101</Channel>" in xml.read_text()

@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
 
-from vwmcp import app, hookup, mvr
+from vwmcp import app, hookup, lightwright, mvr
 from vwmcp.app import READ, WRITE, mcp, vw
 
 REPORT_FIELDS = [
@@ -220,4 +220,69 @@ def vw_import_hookup(
     if not plan["updates"]:
         raise ToolError("Nothing to apply: every row was skipped (empty key or no values).")
     out["result"] = vw_set_lighting_device_fields(plan["updates"], document=document)
+    return out
+
+
+# -------------------------------------------------------------- Lightwright
+
+
+@mcp.tool(annotations=READ)
+def vw_lightwright_snapshot(position: str | None = None, fields: list[str] | None = None,
+                            limit: int = 2000) -> dict:
+    """Read every Lighting Device from the Lightwright Data Exchange XML that
+    Spotlight writes next to the saved document (when the exchange is on).
+    No job runs for the read itself, so it works even while a dialog blocks
+    other tools, but it shows the state as of the last export (Vectorworks
+    rewrites the file when it loses focus). Returns {available, path,
+    exported, fields, count, fixtures: [{uid, lightwright_id, Channel, ...}]},
+    or {available: False, hint} with how to switch the exchange on.
+    position: only fixtures whose Position matches (case-insensitive);
+    fields: keep only these columns (plus uid)."""
+    info = vw("document_info")
+    xml = lightwright.find_xml(info.get("path"))
+    if xml is None:
+        return {"available": False, "document": info.get("name"), "hint": lightwright.HINT}
+    snap = lightwright.parse(xml)
+    rows = snap["fixtures"]
+    if position:
+        rows = [r for r in rows if r.get("Position", "").casefold() == position.casefold()]
+    if fields:
+        rows = [{k: r.get(k, "") for k in ["uid", *fields]} for r in rows]
+    return {"available": True, "path": snap["path"], "exported": snap["exported"], "fields": snap["fields"],
+            "count": len(rows), "fixtures": rows[:limit]}
+
+
+@mcp.tool(annotations=WRITE)
+def vw_lightwright_patch(changes: list[dict], dry_run: bool = True, document: str | None = None) -> dict:
+    """Change Lighting Device fields through the Lightwright exchange file
+    instead of a job: changes = [{"uid": "1246.1.1.0.0", "fields": {"Channel": "201"}}]
+    (UIDs and field names from vw_lightwright_snapshot). dry_run (default)
+    returns the patch without writing. An applied patch lands in Vectorworks
+    1 to 2 s after it next gains focus (click into it), then verify with
+    vw_list_lighting_devices. vw_revert_last writes the inverse patch.
+    Refuses deletes, fields not in the export, symbols no fixture uses (an
+    unknown symbol breaks fixture selection drawing-wide, irreversibly) and
+    type changes without Wattage. Prefer vw_set_lighting_device_fields when
+    the bridge works; this is for Lightwright round trips and blocked sessions.
+    document: optional guard; if given and another document is active,
+    nothing changes."""
+    app.require_document(document)
+    info = vw("document_info")
+    xml = lightwright.find_xml(info.get("path"))
+    if xml is None:
+        raise ToolError("No Lightwright exchange file next to this document. " + lightwright.HINT)
+    text = xml.read_text(encoding="utf-8")
+    snap = lightwright.parse(xml)
+    try:
+        patch = lightwright.build_patch(text, snap, changes)
+    except lightwright.PatchError as e:
+        raise ToolError(str(e)) from e
+    out = {"dry_run": dry_run, "path": str(xml), "changes": len(changes), "patch": patch}
+    if dry_run:
+        return out
+    op = lightwright.revert_op(xml, text, snap, changes)
+    lightwright.write_patch(xml, patch)
+    app.get_journal().record(info.get("name", ""), "vw_lightwright_patch", [op])
+    out["note"] = ("Written. Vectorworks applies it when it next gains focus (click into it); "
+                   "then re-read with vw_list_lighting_devices.")
     return out
