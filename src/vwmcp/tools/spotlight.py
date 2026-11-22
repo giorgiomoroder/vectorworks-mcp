@@ -217,7 +217,7 @@ def vw_mvr_check(
     document lacks, whose checks were skipped. Fix findings with
     vw_set_lighting_device_fields (Fixture ID, UniverseAddress, Position,
     Fixture Mode), the Object Info palette (GDTF fixture) or by importing a
-    hybrid symbol (vw_list_library_resources, vw_import_resource), then check
+    hybrid symbol (vw_list_library, vw_import_resource), then check
     again.
     """
     data = vw("mvr_data")

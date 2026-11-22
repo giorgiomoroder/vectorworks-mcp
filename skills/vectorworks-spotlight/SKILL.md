@@ -102,13 +102,13 @@ after and anything Spotlight overrode.
 2. Fix data with `vw_set_lighting_device_fields` (Fixture ID,
    UniverseAddress, Position, Fixture Mode); a GDTF fixture type is chosen in
    the Object Info palette; a 2D-only symbol needs a hybrid one
-   (`vw_list_library_resources`, `vw_import_resource`).
+   (`vw_list_library`, `vw_import_resource`).
 3. Re-run the check, then the user exports: File > Export > Export MVR.
    There is no scripting call for the export itself.
 
 ### Hang fixtures
 1. Find the symbol: `vw_list_symbols` in the document, or
-   `vw_list_library_files` + `vw_list_library_resources` and
+   `vw_list_library` (search files, then list one file) and
    `vw_import_resource` to bring it in.
 2. `vw_insert_lighting_devices(symbol, x, y, count, spacing, position_name,
    document=)`: real Lighting Devices (symbol + Convert to Instrument), hung at
@@ -125,8 +125,8 @@ after and anything Spotlight overrode.
   border or pipe-and-drape along points. Sizes are mm strings or document
   units as each tool says; the result reports extents read back.
 - Place anything else from a library with `vw_insert_symbol`; plug-in
-  objects by parameter name with `vw_create_pio` / `vw_set_pio_parameters`
-  (`vw_get_pio_parameters` shows the names).
+  objects by parameter name with `vw_create_pio`, then `vw_get_record` /
+  `vw_set_record` with no record name (the object's own parameters).
 
 ### Platforms and people in one call
 - `vw_insert_platform(width, depth, height, x, y, columns, rows, steps_on="front",

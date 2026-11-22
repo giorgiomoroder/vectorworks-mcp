@@ -24,8 +24,8 @@ class FakeVW:
         canned = {
             "import_resource": lambda: {**doc, "name": kw.get("new_name") or kw["name"], "type_code": 16},
             "create_pio": lambda: {**doc, "uuid": "pio-1", "type": "Plug-in Object", "plugin": kw["plugin"]},
-            "set_pio_parameters": lambda: {**doc, "before": {"Channel": "1"}, "record": "Lighting Device"},
-            "get_record": lambda: {"Channel": "7"},
+            "set_record": lambda: {**doc, "before": {"Channel": "1"}, "record": "Lighting Device"},
+            "record_fields": lambda: {"record": "Lighting Device", "fields": {"Channel": "7"}},
             "create_layer": lambda: {**doc, "name": kw["name"], "kind": kw["kind"], "active": False},
             "create_class": lambda: {**doc, "name": kw["name"]},
             "delete_objects": lambda: {**doc, "deleted": len(kw["uuids"])},
@@ -68,9 +68,12 @@ def test_create_pio_reverts_created_uuid(fake):
     assert last_revert_ops(fake) == [{"op": "created", "uuid": "pio-1"}]
 
 
-def test_set_pio_parameters_reports_after_and_reverts_fields(fake):
-    out = drawing.vw_set_pio_parameters("ld-1", {"Channel": "7"})
-    assert out == {"uuid": "ld-1", "plugin": "Lighting Device", "after": {"Channel": "7"}}
+def test_set_record_without_a_record_name_edits_the_plugin_parameters(fake):
+    # vw_set_pio_parameters was folded into vw_set_record (2026-11-21): record
+    # omitted = the plug-in object's own parameter record.
+    out = generic.vw_set_record("ld-1", {"Channel": "7"})
+    assert out == {"uuid": "ld-1", "record": "Lighting Device", "after": {"Channel": "7"}}
+    assert fake.calls[0] == ("set_record", {"uuid": "ld-1", "record": None, "values": {"Channel": "7"}})
     generic.vw_revert_last()
     assert last_revert_ops(fake) == [
         {"op": "fields", "uuid": "ld-1", "record": "Lighting Device", "before": {"Channel": "1"}}
@@ -292,7 +295,8 @@ def test_create_pio_sets_parameters_and_reverts(doc, tmp_path):
     assert out["plugin"] == "Truss" and out["class"] == "Lighting-Truss"
     assert doc.objects[h]["class"] == "Lighting-Truss"  # applied by the second job
     assert doc.objects[h]["fields"]["Length"] == "10" and ("reset", h) in doc.events
-    assert drawing.vw_get_pio_parameters(out["uuid"]) == {"plugin": "Truss", "fields": {"Length": "10", "Truss Type": ""}}
+    assert generic.vw_get_record(out["uuid"]) == {"record": "Truss", "fields": {"Length": "10", "Truss Type": ""}}
+    assert generic.vw_get_record(out["uuid"], record="Truss")["fields"]["Length"] == "10"
     generic.vw_revert_last()
     assert h not in doc.objects
 
@@ -316,9 +320,9 @@ def test_create_pio_unknown_class_leaves_object_but_errors(doc):
     assert doc.objects == {}
 
 
-def test_set_pio_parameters_then_revert(doc):
+def test_set_record_on_a_plugin_then_revert(doc):
     uuid = drawing.vw_create_pio("Lighting Device", 0, 0)["uuid"]
-    out = drawing.vw_set_pio_parameters(uuid, {"Channel": "7"})
+    out = generic.vw_set_record(uuid, {"Channel": "7"})
     assert out["after"]["Channel"] == "7"
     generic.vw_revert_last()
     h = max(doc.objects)
@@ -362,10 +366,10 @@ def test_set_view_variants(doc):
 def test_library_resources_and_import(doc, monkeypatch):
     import os
     monkeypatch.setattr(os.path, "isfile", lambda p: p in doc.library)
-    out = drawing.vw_list_library_resources("/lib/Truss.vwx", name_contains="20")
+    out = drawing.vw_list_library(path="/lib/Truss.vwx", name_contains="20")
     assert out == {"path": "/lib/Truss.vwx", "type_code": 16, "count": 1, "names": ["Tomcat 20"]}
     with pytest.raises(ToolError, match="no file"):
-        drawing.vw_list_library_resources("/nope.vwx")
+        drawing.vw_list_library(path="/nope.vwx")
     imp = drawing.vw_import_resource("/lib/Truss.vwx", "Tomcat 20")
     assert imp == {"name": "Tomcat 20", "type_code": 16} and "Tomcat 20" in doc.resources
     with pytest.raises(ToolError, match="already in the document"):
@@ -891,3 +895,18 @@ def test_inserts_restore_the_users_selection(doc, fake_vs):
     fake_vs.CreateCustomObjectN = lambda *a: (lambda h: (doc.selected.clear(), doc.selected.add(h), h)[2])(orig_create(*a))
     drawing.vw_insert_stage_decks(48, 96, 24, 0, 0)
     assert doc.selected == {pre}
+
+
+def test_list_library_without_a_path_searches_files_on_disk(monkeypatch):
+    # vw_list_library_files + vw_list_library_resources became one tool (2026-11-21).
+    seen = {}
+
+    def find(query, limit):
+        seen.update(query=query, limit=limit)
+        return [{"library": "Entertainment", "folder": "Truss", "name": "Tomcat.vwx", "path": "/lib/Tomcat.vwx"}]
+
+    monkeypatch.setattr(drawing.library, "find_library_files", find)
+    out = drawing.vw_list_library(query="truss tomcat", limit=5)
+    assert out == {"query": "truss tomcat", "count": 1,
+                   "files": [{"library": "Entertainment", "folder": "Truss", "name": "Tomcat.vwx", "path": "/lib/Tomcat.vwx"}]}
+    assert seen == {"query": "truss tomcat", "limit": 5}

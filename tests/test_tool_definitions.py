@@ -29,3 +29,14 @@ def test_every_tool_has_a_description_of_a_useful_length():
 def test_tool_names_follow_the_verb_thing_pattern():
     bad = [t.name for t in _tools() if not re.fullmatch(r"vw_[a-z]+(_[a-z0-9]+)*", t.name)]
     assert not bad, bad
+
+
+def test_merged_tools_are_gone_and_the_count_is_50():
+    # 2026-11-21 consolidation: plug-in parameters are records (vw_get_record /
+    # vw_set_record with record omitted), a script file is vw_exec_python(path=),
+    # the two library tools are vw_list_library.
+    names = {t.name for t in _tools()}
+    assert not names & {"vw_get_pio_parameters", "vw_set_pio_parameters", "vw_exec_file",
+                        "vw_list_library_files", "vw_list_library_resources"}
+    assert {"vw_list_library", "vw_get_record", "vw_set_record", "vw_exec_python"} <= names
+    assert len(names) == 50

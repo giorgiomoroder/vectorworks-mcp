@@ -3,6 +3,22 @@
 Releases are tagged after a live-tested batch, not after every commit.
 Dates are the day the batch was verified inside Vectorworks.
 
+## Unreleased
+
+- 50 tools instead of 54: `vw_get_record` / `vw_set_record` read and write a
+  plug-in object's parameters when no record is named (replaces
+  `vw_get_pio_parameters` / `vw_set_pio_parameters`); `vw_exec_python` takes
+  `path` for a script file (replaces `vw_exec_file`); `vw_list_library`
+  searches library files or lists one file's resources (replaces
+  `vw_list_library_files` / `vw_list_library_resources`). `vw_set_record`'s
+  parameter order changed to (uuid, values, record, document) and both record
+  tools return {record, fields} / {uuid, record, after}.
+- A description on every tool parameter; docstrings say when to use each
+  tool, side effects and the result keys.
+- Start screen detected by its untitled window; Vectorworks' own dialogs no
+  longer count as documents; Lightwright patches back up the export and
+  journal the undo from live values.
+
 ## 0.1.0 (2026-11-21), beta
 
 First tagged release. Tested on Vectorworks 2026 (Update 3 and 31.7) and

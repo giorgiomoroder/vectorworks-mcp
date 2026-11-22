@@ -111,8 +111,8 @@ before changing anything that touches Vectorworks.
   do **not**, jobs run underneath (live 2026-11-21). `vw_screenshot` lists
   what is in front (`in_front`) without touching the app. `vslint.py` (from
   the PO4 fork, bgst84) checks syntax, vs.* argument counts, deprecated
-  calls and the safety classes before `vw_exec_python` / `vw_exec_file`
-  send anything (also `vw_lint`, `vwmcp lint FILE`); the signature table is
+  calls and the safety classes before `vw_exec_python` (code or `path`)
+  sends anything (also `vw_lint`, `vwmcp lint FILE`); the signature table is
   `data/vs_api_<year>.json`, refreshed with `vwmcp dump-api`.
 - Jobs sent while only the start screen is open (no document) crash
   Vectorworks 2026 and 2027 (Keystone's finding). `trigger.py` refuses via
@@ -172,8 +172,8 @@ fixtures, stage parts, band members and instruments. These are mostly
 Spotlight plug-in objects and library symbols, so prefer native objects over
 hand-built geometry (walls/extrudes are secondary). Investigate each live
 on a throwaway doc and record findings in `docs/vs-notes.md`:
-- [x] **Library access** (2026-11-17, live): `vw_list_library_files` on disk,
-      `vw_list_library_resources` + `vw_import_resource` (`BuildResourceListN` /
+- [x] **Library access** (2026-11-17, live): `vw_list_library` (files on disk,
+      or one file's resources) + `vw_import_resource` (`BuildResourceListN` /
       `ImportResourceToCurrentFile`). Only locally present `.vwx` libraries are
       seen (many are download-on-demand); importing a truss symbol brings the 2D
       definition only.
@@ -217,7 +217,7 @@ on a throwaway doc and record findings in `docs/vs-notes.md`:
       the local SQLite index of 622 default files, has neither). Michael has to
       download them once in the Resource Manager (Vectorworks Libraries →
       Visualization/People and Entertainment/Audio backline content); after
-      that `vw_list_library_files` + `vw_insert_symbol` already place them. Then:
+      that `vw_list_library` + `vw_insert_symbol` already place them. Then:
       `vw_insert_band` places them (people + backline at positions, named, classed).
 - [x] **`vw_screenshot`** (2026-11-17): window capture via ctypes CGWindowList
       (JXA's ObjC bridge segfaults in osascript) + `screencapture -l`. Image-to-world
@@ -226,7 +226,8 @@ on a throwaway doc and record findings in `docs/vs-notes.md`:
       projection code to verify, see vs-notes).
 - [x] Generic helpers (2026-11-17, live): `vw_create_layer`/`class`,
       `vw_delete_objects` (revert barrier), `vw_move_objects`, `vw_set_view`,
-      plus `vw_create_pio` / `vw_get_pio_parameters` / `vw_set_pio_parameters`.
+      plus `vw_create_pio` and `vw_get_record` / `vw_set_record` (record
+      omitted = the plug-in's parameters; merged 2026-11-21 from the pio tools).
       Journaled (revert ops: layer, class, resource, move). Known wrinkle: a
       plug-in regen between a move and its revert can shift the object ~0.5 units.
 - [x] Journal raw Python better: optional "created objects" capture (diff UUIDs

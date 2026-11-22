@@ -163,20 +163,25 @@ def test_ping_combines_warnings(vs, monkeypatch):
     assert "9.9.9" in out["warning"] and "2026" in out["warning"]
 
 
-def test_exec_file_runs_script_and_is_revertible(vs, tmp_path):
+def test_exec_python_runs_a_script_file_and_is_revertible(vs, tmp_path):
+    # vw_exec_file was folded into vw_exec_python(path=...) (2026-11-21).
     script = tmp_path / "draw.py"
     script.write_text("vs.Rect(0, 1, 1, 0)\n'drawn'", encoding="utf-8")
-    out = server.vw_exec_file(str(script))
+    out = server.vw_exec_python(path=str(script))
     assert out["value"] == "drawn" and out["created"] == 1
     server.vw_revert_last()
     assert vs.objects == ["pre-1", "pre-2"]
 
 
-def test_exec_file_missing_path_is_a_tool_error(tmp_path):
+def test_exec_python_needs_exactly_one_of_code_and_path(tmp_path):
     from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError, match="Can't read"):
-        server.vw_exec_file(str(tmp_path / "nope.py"))
+        server.vw_exec_python(path=str(tmp_path / "nope.py"))
+    with pytest.raises(ToolError, match="either code or path"):
+        server.vw_exec_python()
+    with pytest.raises(ToolError, match="either code or path"):
+        server.vw_exec_python(code="1", path=str(tmp_path / "x.py"))
 
 
 

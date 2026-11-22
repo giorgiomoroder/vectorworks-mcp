@@ -15,9 +15,9 @@ class FakeVW:
     def __call__(self, fn, **kw):
         self.calls.append((fn, kw))
         if fn == "set_record":
-            return {"document": self.document, "before": {"Note": "old"}}
-        if fn == "get_record":
-            return {"Note": "new"}
+            return {"document": self.document, "record": kw["record"], "before": {"Note": "old"}}
+        if fn == "record_fields":
+            return {"record": kw["record"], "fields": {"Note": "new"}}
         if fn == "insert_symbol":
             return {"document": self.document, "uuid": "sym-1", "type": "Symbol"}
         if fn == "set_lighting_device_fields":
@@ -51,7 +51,8 @@ def fake(tmp_path, monkeypatch):
 
 
 def test_set_record_then_revert_restores_before_values(fake):
-    assert generic.vw_set_record("u1", "Notes", {"Note": "new"}) == {"Note": "new"}
+    assert generic.vw_set_record("u1", {"Note": "new"}, record="Notes") == {
+        "uuid": "u1", "record": "Notes", "after": {"Note": "new"}}
     out = generic.vw_revert_last()
     fn, kw = fake.calls[-1]
     assert fn == "revert"
@@ -74,14 +75,14 @@ def test_lighting_fields_revert_uses_lighting_device_record(fake):
 
 
 def test_revert_refuses_when_active_document_changed(fake):
-    generic.vw_set_record("u1", "Notes", {"Note": "new"})
+    generic.vw_set_record("u1", {"Note": "new"}, record="Notes")
     fake.document = "Other.vwx"
     with pytest.raises(ToolError, match="nothing to revert in 'Other.vwx'"):
         generic.vw_revert_last()
 
 
 def test_exec_python_blocks_revert_unless_read_only(fake):
-    generic.vw_set_record("u1", "Notes", {"Note": "new"})
+    generic.vw_set_record("u1", {"Note": "new"}, record="Notes")
     generic.vw_exec_python("print(1)", modifies_document=False)
     assert generic.vw_revert_last()["reverted_tool"] == "vw_set_record"
 

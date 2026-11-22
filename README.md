@@ -135,7 +135,7 @@ Vectorworks restart. Claude Code users keep using the installer script.
 | `vw_import_hookup` | Channel hookup from a spreadsheet export (.csv/.tsv): rows matched by channel or position + unit, columns written as device fields; dry run first, then one revertible step |
 | `vw_lightwright_snapshot` | Every Lighting Device as Spotlight's Lightwright Data Exchange last exported it (the XML next to the saved file): works even while a dialog blocks the other tools |
 | `vw_lightwright_patch` | Change device fields through that exchange file (Lightwright-style sparse patch, applied when Vectorworks regains focus); dry run by default, guarded against the known ways to damage a plot, revertible; the full export is copied to `~/.vwmcp/lightwright/` first |
-| `vw_list_library_files`, `vw_list_library_resources` | Browse the Vectorworks and user libraries on disk (lighting, truss, people, stage decks) and list the symbols inside a file |
+| `vw_list_library` | Browse the Vectorworks and user libraries on disk (lighting, truss, people, stage decks), or list the symbols inside one library file |
 | `vw_import_resource` | Import one symbol or plug-in style from a library file into the document |
 | `vw_insert_truss_run` | A straight truss run from a library symbol: pieces end to end at a trim height, linked into a Braceworks system, named position |
 | `vw_list_truss` | Truss inventory: runs grouped by system, pieces in order, total length and weight, broken links flagged |
@@ -146,7 +146,7 @@ Vectorworks restart. Claude Code users keep using the installer script.
 | `vw_insert_soft_goods` | A Soft Goods run (curtain, truss border, pipe-and-drape) along a polyline: height, opening, traveler, pipe/track; revertible (not yet run live) |
 | `vw_insert_band` | Band members, crew or backline from people/backline symbols at positions, each with a name label; one revertible step (not yet run live; needs the People/Audio libraries downloaded once) |
 | `vw_insert_lighting_devices` | Hang fixtures from a fixture symbol on a position at a spacing, as real Lighting Devices with unit numbers, channels, purpose; verified after insert |
-| `vw_create_pio`, `vw_get_pio_parameters`, `vw_set_pio_parameters` | Place and edit plug-in objects (TrussItem, Lighting Device, positions…) by parameter name |
+| `vw_create_pio` | Place a plug-in object (TrussItem, Lighting Device, positions…) by its parameter names; read and edit its parameters with `vw_get_record` / `vw_set_record` |
 | `vw_apply_class_standard` | A tidy class set with colours and line weights (Lighting-*, Rigging-*, Stage-*, Soft Goods, Audio, Video, Scenery, People, Venue-*, Notes): creates what is missing, optionally restyles the rest; revertible |
 | `vw_create_sheet` | A sheet layer with a viewport of chosen design layers at a scale, classes hidden in it, optional title block with sheet title/number/project; revertible (not yet run live) |
 | `vw_create_layer`, `vw_create_class`, `vw_move_objects`, `vw_delete_objects` | Document housekeeping; all but delete are revertible |
@@ -157,8 +157,7 @@ Vectorworks restart. Claude Code users keep using the installer script.
 | `vw_duplicate_layer` | Copy a design layer with its objects next to the original (same scale, visibility as the source by default); can return the uuid mapping; revertible |
 | `vw_set_vertices` | Replace the vertices of a polygon or polyline, with read-back check and area before/after; revertible |
 | `vw_revert_last` | Undo exactly the last Claude edit in this drawing (repeatable), including objects a `vw_exec_python` call created |
-| `vw_exec_python` | Run any Vectorworks Python (`vs.*`) and get stdout, value, traceback; records created objects for revert; optional timeout |
-| `vw_exec_file` | Same as `vw_exec_python`, for a script file on the Mac |
+| `vw_exec_python` | Run any Vectorworks Python (`vs.*`), given as code or as a script file path, and get stdout, value, traceback; records created objects for revert; optional timeout |
 | `vw_lint` | Check Python for Vectorworks without running it: syntax, wrong `vs.*` argument counts, deprecated calls, and functions a published safety sweep found to crash or hang Vectorworks or to open a dialog. `vw_exec_python` runs this check first |
 | `vw_screenshot` | The document window as an image (plus window geometry and any dialog or open menu in front); works even while a dialog blocks the bridge; `mapping=True` adds the pixel-to-drawing-coordinates mapping |
 | `vw_point_to_world` | Drawing x, y of a pixel in the last mapped screenshot (Top/Plan), no job |

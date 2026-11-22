@@ -36,44 +36,40 @@ _UNITS = "document units"
 
 
 @mcp.tool(annotations=READ)
-def vw_list_library_files(
-    query: Annotated[str, _d("Words that must all appear in the file's path, case-insensitive; "
-                             "for example 'truss', 'lighting', 'people', 'stage deck' or 'audio'. "
-                             "Empty lists every library file.")] = "",
-    limit: Annotated[int, _d("Maximum number of files to return.")] = 50,
-) -> list[dict]:
-    """Find Vectorworks library files (.vwx) installed on this Mac by words in their path.
-    Searches the Vectorworks application libraries and the user libraries on
-    disk only; nothing is sent to Vectorworks and nothing is imported. Use it
-    first when a symbol (truss, fixture, people, backline) is not yet in the
-    document, then vw_list_library_resources on one of the returned paths and
-    vw_import_resource to bring a symbol in. Only libraries that are actually
-    downloaded are found; many Vectorworks libraries are download-on-demand.
-    Returns a list of {library, folder, name, path} rows."""
-    return library.find_library_files(query, limit=limit)
-
-
-@mcp.tool(annotations=READ)
-def vw_list_library_resources(
-    path: Annotated[str, _d("Absolute path of a library .vwx file, as returned by vw_list_library_files.")],
-    name_contains: Annotated[str | None, _d("Keep only resources whose name contains this text, "
-                                           "case-insensitive. Omitted: all resources of that type.")] = None,
-    type_code: Annotated[int, _d("Vectorworks resource type: 16 = symbol definitions (includes plug-in "
-                                 "styles such as truss, lighting pipe and fixture symbols), 47 = record formats.")] = 16,
-    limit: Annotated[int, _d("Maximum number of names to return.")] = 500,
+def vw_list_library(
+    query: Annotated[str, _d("Without path: words that must all appear in a library file's path, "
+                             "case-insensitive, such as 'truss', 'lighting', 'people', 'stage deck' "
+                             "or 'audio'. Empty lists every library file.")] = "",
+    path: Annotated[str | None, _d("Absolute path of one library .vwx file (from a previous call's "
+                                   "`files`): list the resources inside it instead of searching files.")] = None,
+    name_contains: Annotated[str | None, _d("With path: keep only resources whose name contains this "
+                                           "text, case-insensitive.")] = None,
+    type_code: Annotated[int, _d("With path: Vectorworks resource type, 16 = symbol definitions "
+                                 "(includes plug-in styles such as truss, lighting pipe and fixture "
+                                 "symbols), 47 = record formats.")] = 16,
+    limit: Annotated[int, _d("Maximum number of files or resource names to return.")] = 200,
 ) -> dict:
-    """List the resource names inside one library file without importing anything.
-    Vectorworks reads the file's resource list; the document is not changed.
-    Use it after vw_list_library_files to pick the exact symbol name for
-    vw_import_resource. Returns {path, type_code, count, names: [...]}."""
+    """Browse the Vectorworks libraries: find library files on this Mac by words in their path, or list the symbols inside one file.
+
+    Read-only, imports nothing. Without `path` it searches the application and
+    user library folders on disk (no job; only libraries that are actually
+    downloaded are found, many are download-on-demand) and returns {query,
+    count, files: [{library, folder, name, path}]}. With `path` Vectorworks
+    reads that file's resource list and returns {path, type_code, count,
+    names}. Typical flow: search, then list one file, then vw_import_resource
+    brings a symbol into the document for vw_insert_symbol or the typed insert
+    tools."""
+    if path is None:
+        files = library.find_library_files(query, limit=limit)
+        return {"query": query, "count": len(files), "files": files}
     return vw("library_resources", path=path, type_code=type_code,
               name_contains=name_contains, limit=limit)
 
 
 @mcp.tool(annotations=WRITE)
 def vw_import_resource(
-    path: Annotated[str, _d("Absolute path of the library .vwx file (from vw_list_library_files).")],
-    name: Annotated[str, _d("Exact resource name inside that file (from vw_list_library_resources).")],
+    path: Annotated[str, _d("Absolute path of the library .vwx file (from vw_list_library).")],
+    name: Annotated[str, _d("Exact resource name inside that file (from vw_list_library).")],
     new_name: Annotated[str | None, _d("Name for the imported copy when the document already has a "
                                       "resource called `name`. Omitted: imported under its own name.")] = None,
     type_code: Annotated[int, _d("Resource type: 16 = symbol definition or plug-in style (default), "
@@ -97,7 +93,7 @@ def vw_import_resource(
 def vw_create_pio(
     plugin: Annotated[str, _d("Internal plug-in name, case-sensitive: 'TrussItem', 'Lighting Device', "
                               "'Light Position Obj', ... Learn names from vw_find_objects(type='Plug-in "
-                              "Object') plus vw_get_pio_parameters on an existing object.")],
+                              "Object') plus vw_get_record on an existing object.")],
     x: Annotated[float, _d(f"Insertion point x in {_UNITS}.")],
     y: Annotated[float, _d(f"Insertion point y in {_UNITS}.")],
     rotation: Annotated[float, _d("Rotation in degrees, counter-clockwise, 0 = along +x.")] = 0.0,
@@ -117,7 +113,7 @@ def vw_create_pio(
     parameter names abort the call and nothing is placed. One revertible step.
     Returns the new object's summary as vw_find_objects lists objects ({uuid,
     type, name, layer, class, bbox...}) plus class; read the resulting fields
-    with vw_get_pio_parameters."""
+    with vw_get_record."""
     app.require_document(document)
     info = vw("create_pio", plugin=plugin, x=x, y=y, rotation=rotation,
               parameters=parameters, layer=layer)
@@ -128,38 +124,6 @@ def vw_create_pio(
         vw("set_objects_class", uuids=[info["uuid"]], cls=class_name)
         out["class"] = class_name
     return out
-
-
-@mcp.tool(annotations=READ)
-def vw_get_pio_parameters(
-    uuid: Annotated[str, _d("UUID of a plug-in object, from vw_find_objects, vw_get_selection or an insert tool's result.")],
-) -> dict:
-    """Read every parameter field of one plug-in object with its current value.
-    Works for truss, lighting devices, stage decks, hoists and any other
-    plug-in object; also tells you the plug-in's internal name, which is what
-    vw_create_pio needs. Reads only. Returns {plugin, fields: {field: value}}."""
-    return vw("pio_parameters", uuid=uuid)
-
-
-@mcp.tool(annotations=WRITE)
-def vw_set_pio_parameters(
-    uuid: Annotated[str, _d("UUID of the plug-in object to change.")],
-    values: Annotated[dict[str, Any], _d("Fields to set, by exact field name as vw_get_pio_parameters lists "
-                                         "them, with their new values. One unknown name changes nothing.")],
-    document: Annotated[str | None, _d(_DOCUMENT)] = None,
-) -> dict:
-    """Change parameter fields of one plug-in object by field name and regenerate it.
-    Use it for objects that have no typed editor; for Lighting Devices prefer
-    vw_set_lighting_device_fields, which also handles addresses and read-back.
-    All-or-nothing: an unknown field name changes nothing. One revertible
-    step: vw_revert_last restores the previous values. Returns {uuid, plugin,
-    after: {field: value}} re-read after the regeneration, so values Vectorworks
-    rejected show their actual state."""
-    app.require_document(document)
-    out = vw("set_pio_parameters", uuid=uuid, values=values)
-    ops = [{"op": "fields", "uuid": uuid, "record": out["record"], "before": out["before"]}]
-    _journal(out, "vw_set_pio_parameters", ops)
-    return {"uuid": uuid, "plugin": out["record"], "after": vw("get_record", uuid=uuid, record=out["record"])}
 
 
 @mcp.tool(annotations=WRITE)
@@ -350,7 +314,7 @@ def vw_insert_truss_run(
                                             "devices can refer to the run. Omitted: left empty.")] = None,
     layer: Annotated[str | None, _d(_LAYER)] = None,
     class_name: Annotated[str | None, _d(_CLASS)] = None,
-    library_path: Annotated[str | None, _d("Library .vwx path (vw_list_library_files) to import the symbol "
+    library_path: Annotated[str | None, _d("Library .vwx path (vw_list_library) to import the symbol "
                                            "from first, when it is not in the document yet.")] = None,
     document: Annotated[str | None, _d(_DOCUMENT)] = None,
 ) -> dict:
@@ -418,7 +382,7 @@ def vw_insert_lighting_devices(
     purpose: Annotated[str | None, _d(_PURPOSE)] = None,
     layer: Annotated[str | None, _d(_LAYER)] = None,
     class_name: Annotated[str | None, _d(_CLASS)] = None,
-    library_path: Annotated[str | None, _d("Library .vwx path (vw_list_library_files) to import the symbol "
+    library_path: Annotated[str | None, _d("Library .vwx path (vw_list_library) to import the symbol "
                                            "from first, when it is not in the document yet.")] = None,
     document: Annotated[str | None, _d(_DOCUMENT)] = None,
 ) -> dict:
@@ -601,7 +565,7 @@ def vw_insert_band(
 ) -> dict:
     """Place a band or crew on stage: people or backline symbols at given points, each with a name label.
     The symbols must already be in the document (vw_list_symbols); bring them
-    in first with vw_list_library_resources and vw_import_resource. For a
+    in first with vw_list_library and vw_import_resource. For a
     single symbol without a label use vw_insert_symbol. All-or-nothing; one
     revertible step removes symbols and labels together. Returns {members:
     [{uuid, label_uuid, ...}], class?}."""

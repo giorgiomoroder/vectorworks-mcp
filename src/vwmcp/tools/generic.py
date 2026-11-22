@@ -138,12 +138,16 @@ def vw_doctor(
 
 @mcp.tool(annotations=WRITE)
 def vw_exec_python(
-    code: Annotated[str, Field(description=(
-        "Python source to run inside Vectorworks with `vs` in scope. Python 3.9 syntax "
+    code: Annotated[str | None, Field(description=(
+        "Python source to run inside Vectorworks with `vs` in scope (or give `path` instead). Python 3.9 syntax "
         "(Vectorworks 2026 embeds 3.9; no match statements, no `X | Y` types). Its stdout, "
         "the value of the last expression or of a variable named `result`, and any "
         "traceback are returned. Handles are only valid during the call: return UUIDs "
-        "(vs.GetObjectUuid) to refer to objects later."))],
+        "(vs.GetObjectUuid) to refer to objects later."))] = None,
+    path: Annotated[str | None, Field(description=(
+        "Instead of code: path of a Python script file on this Mac (\"~\" is expanded), for "
+        "example in the project's _claude_scripts folder. Its contents run exactly like code; "
+        "give one of code and path, not both."))] = None,
     modifies_document: Annotated[bool, Field(description=(
         "True (default): the objects the code creates are recorded so vw_revert_last can "
         "delete exactly those, even if the code fails halfway. False: run as read-only code "
@@ -163,8 +167,8 @@ def vw_exec_python(
 ) -> dict:
     """Run arbitrary Python inside Vectorworks; the last resort when no typed tool fits.
 
-    Prefer the typed vw_* tools (they verify and revert precisely); use
-    vw_exec_file for a script that already lives in a file and vw_lint to
+    Prefer the typed vw_* tools (they verify and revert precisely); give
+    `path` for a script that already lives in a file, and use vw_lint to
     check code without running it. The code is linted first, then every vs.*
     call is checked inside Vectorworks (argument count and types, known
     crashers): a bad call comes back as VSArgumentError / VSUnsafeError in
@@ -176,8 +180,20 @@ def vw_exec_python(
     (moves, attributes, deletions) are not, and such a call blocks stepping
     further back. Returns {ok, value, stdout, error, traceback, created,
     revertable, warning?, lint_warnings?}."""
+    if (code is None) == (path is None):
+        raise ToolError("Give either code or path, not both and not neither.")
     app.require_document(document)
-    lint_warnings = _preflight(code, "<vw_exec_python>", allow_dialogs) if lint else []
+    filename = "<vw_exec_python>"
+    if path is not None:
+        p = Path(path).expanduser()
+        try:
+            code = p.read_text(encoding="utf-8")
+        except OSError as e:
+            raise ToolError(f"Can't read {p}: {e}") from e
+        filename = p.name
+        if timeout is None:
+            timeout = 120
+    lint_warnings = _preflight(code, filename, allow_dialogs) if lint else []
     out = _exec_python(code, modifies_document, timeout, allow_dialogs)
     if lint_warnings:
         out["lint_warnings"] = lint_warnings
@@ -231,46 +247,6 @@ def _exec_python(code: str, modifies_document: bool, timeout: float | None,
     return result
 
 
-@mcp.tool(annotations=WRITE)
-def vw_exec_file(
-    path: Annotated[str, Field(description=(
-        "Path of a Python script file on this Mac (\"~\" is expanded), for example in the "
-        "project's _claude_scripts folder. Its contents run exactly like code given to "
-        "vw_exec_python: Python 3.9 syntax, `vs` in scope."))],
-    modifies_document: Annotated[bool, Field(description=(
-        "True (default): objects the script creates are recorded so vw_revert_last can delete "
-        "them. False: run as read-only code (faster, no journal entry)."))] = True,
-    timeout: Annotated[float | None, Field(description=(
-        "Seconds to wait for the result once Vectorworks has taken the job; default 120 "
-        "because script files tend to be large."))] = 120,
-    document: Annotated[str | None, Field(description=DOC)] = None,
-    lint: Annotated[bool, Field(description=(
-        "True (default): lint the file before sending it (see vw_lint); errors stop the call "
-        "with a report. False skips the check."))] = True,
-    allow_dialogs: Annotated[bool, Field(description=(
-        "False (default): vs.* functions that open a dialog are refused (an open dialog blocks "
-        "every further job). True: allow them on purpose."))] = False,
-) -> dict:
-    """Run a Python script file from this Mac inside Vectorworks, like vw_exec_python with its contents.
-
-    Use it instead of vw_exec_python when the code is long or kept in the
-    project; use vw_lint to only check it. Changes the document when the
-    script does; created objects are revertible with vw_revert_last, edits to
-    pre-existing objects are not. Returns {ok, value, stdout, error,
-    traceback, created, revertable, warning?, lint_warnings?}."""
-    app.require_document(document)
-    p = Path(path).expanduser()
-    try:
-        code = p.read_text(encoding="utf-8")
-    except OSError as e:
-        raise ToolError(f"Can't read {p}: {e}") from e
-    lint_warnings = _preflight(code, p.name, allow_dialogs) if lint else []
-    out = _exec_python(code, modifies_document, timeout, allow_dialogs)
-    if lint_warnings:
-        out["lint_warnings"] = lint_warnings
-    return out
-
-
 @mcp.tool(annotations=READ)
 def vw_lint(
     code: Annotated[str | None, Field(description=(
@@ -286,7 +262,7 @@ def vw_lint(
     and functions a published safety sweep found to crash or hang Vectorworks
     or to open a dialog; unknown vs.* names are warnings. Works without
     Vectorworks running. Argument types and values are not checked here (the
-    bridge checks types when the code runs). vw_exec_python and vw_exec_file
+    bridge checks types when the code runs). vw_exec_python and vw_exec_python
     run this check themselves, so call it directly only to check a script you
     do not intend to run yet. Returns {ok, errors, warnings, api}."""
     if (code is None) == (path is None):
@@ -661,43 +637,49 @@ def vw_find_objects(
 
 @mcp.tool(annotations=READ)
 def vw_get_record(
-    uuid: Annotated[str, Field(description="UUID of the object (from vw_find_objects or vw_get_selection).")],
-    record: Annotated[str, Field(description=(
-        "Record format name, or a plug-in object's name (\"Lighting Device\", \"TrussItem\") to "
-        "read its parameters."))],
+    uuid: Annotated[str, Field(description="UUID of the object (from vw_find_objects, vw_get_selection or an insert tool's result).")],
+    record: Annotated[str | None, Field(description=(
+        "Record format name attached to the object. Omitted: the object's own plug-in parameter "
+        "record (truss, lighting device, stage deck, hoist and every other plug-in object); an "
+        "error if the object is not a plug-in object."))] = None,
 ) -> dict[str, Any]:
-    """Read every field of one record, or of a plug-in object's parameters, on one object.
+    """Read every field of one record on one object, or a plug-in object's parameters when no record is named.
 
-    Read-only. Returns {field name: value as text}. Write with vw_set_record;
-    for Lighting Devices prefer vw_list_lighting_devices and
-    vw_set_lighting_device_fields, which know Spotlight's rules."""
-    return vw("get_record", uuid=uuid, record=record)
+    Read-only. Returns {record (the name resolved, which is also what
+    vw_create_pio needs as the plug-in name), fields: {field name: value as
+    text}}. Write with vw_set_record; for Lighting Devices prefer
+    vw_list_lighting_devices and vw_set_lighting_device_fields, which know
+    Spotlight's rules."""
+    return vw("record_fields", uuid=uuid, record=record)
 
 
 @mcp.tool(annotations=WRITE)
 def vw_set_record(
     uuid: Annotated[str, Field(description="UUID of the object to change.")],
-    record: Annotated[str, Field(description=(
-        "Record format name, or a plug-in object's name to set its parameters."))],
     values: Annotated[dict[str, Any], Field(description=(
-        "{field name: new value}. Every name must exist on that record, or nothing changes; "
-        "values are written as text, numbers as numbers."))],
+        "{field name: new value}, names exactly as vw_get_record lists them. Every name must "
+        "exist on that record, or nothing changes; values are written as text."))],
+    record: Annotated[str | None, Field(description=(
+        "Record format name. Omitted: the object's own plug-in parameter record, which is then "
+        "regenerated so the change shows."))] = None,
     document: Annotated[str | None, Field(description=DOC)] = None,
 ) -> dict[str, Any]:
-    """Set fields of one record, or parameters of one plug-in object, on one object.
+    """Set fields of one record on one object, or a plug-in object's parameters when no record is named.
 
     Changes the document; one revertible step (vw_revert_last restores the
     previous values). Unknown field names are rejected before anything
     changes. For Lighting Devices use vw_set_lighting_device_fields, which
-    applies Spotlight's address rules and verifies the result. Returns the
-    whole record as read back afterwards."""
+    applies Spotlight's address rules and verifies the result. Returns {uuid,
+    record, after: the whole record read back after the change, so values
+    Vectorworks rejected show their actual state}."""
     app.require_document(document)
     out = vw("set_record", uuid=uuid, record=record, values=values)
     app.get_journal().record(
         out["document"], "vw_set_record",
-        [{"op": "fields", "uuid": uuid, "record": record, "before": out["before"]}],
+        [{"op": "fields", "uuid": uuid, "record": out["record"], "before": out["before"]}],
     )
-    return vw("get_record", uuid=uuid, record=record)
+    after = vw("record_fields", uuid=uuid, record=out["record"])
+    return {"uuid": uuid, "record": out["record"], "after": after["fields"]}
 
 
 @mcp.tool(annotations=READ)
@@ -712,7 +694,7 @@ def vw_list_symbols(
 
     Read-only. Returns [{name, folder}]. These are the names vw_insert_symbol
     and vw_insert_lighting_devices accept; a symbol that is not in the
-    document yet comes in from a library with vw_list_library_resources and
+    document yet comes in from a library with vw_list_library and
     vw_import_resource."""
     return vw("list_symbols", name_contains=name_contains, folder=folder, limit=limit)
 

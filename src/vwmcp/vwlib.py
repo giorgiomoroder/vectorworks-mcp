@@ -187,8 +187,19 @@ def _record_handle(h, record):
     raise LookupError("object has no record %r (has %r)" % (record, record_names(h)))
 
 
-def get_record(uuid, record):
+def _resolve_record(h, record):
+    """record None means the plug-in object's own parameter record."""
+    if record:
+        return record
+    name = pio_name(h)
+    if not name:
+        raise TypeError("object is not a plug-in object; give the record name (has %r)" % record_names(h))
+    return name
+
+
+def get_record(uuid, record=None):
     h = handle(uuid)
+    record = _resolve_record(h, record)
     rec = _record_handle(h, record)
     fields = {}
     for i in range(1, vs.NumFields(rec) + 1):
@@ -197,8 +208,16 @@ def get_record(uuid, record):
     return fields
 
 
+def record_fields(uuid, record=None):
+    """{"record": name, "fields": {...}}: the record name resolved (a plug-in's
+    parameters when record is None)."""
+    record = _resolve_record(handle(uuid), record)
+    return {"record": record, "fields": get_record(uuid, record)}
+
+
 def set_record(uuid, record, values):
     h = handle(uuid)
+    record = _resolve_record(h, record)
     rec = _record_handle(h, record)
     known = set(_str(vs.GetFldName(rec, i)) for i in range(1, vs.NumFields(rec) + 1))
     unknown = [k for k in values if k not in known]
@@ -206,7 +225,7 @@ def set_record(uuid, record, values):
         raise KeyError("unknown field(s) %r on record %r" % (unknown, record))
     before = dict((k, _str(vs.GetRField(h, record, k))) for k in values)
     _write_fields(h, record, values)
-    return {"document": current_document(), "before": before}
+    return {"document": current_document(), "record": record, "before": before}
 
 
 def _write_fields(h, record, values):
@@ -875,23 +894,6 @@ def create_pio(plugin, x, y, rotation=0.0, parameters=None, layer=None):
     info = obj_info(h)
     info["document"] = current_document()
     return info
-
-
-def pio_parameters(uuid):
-    h = handle(uuid)
-    rec = pio_name(h)
-    if not rec:
-        raise TypeError("object %s is not a plug-in object" % uuid)
-    return {"plugin": rec, "fields": get_record(uuid, rec)}
-
-
-def set_pio_parameters(uuid, values):
-    rec = pio_name(handle(uuid))
-    if not rec:
-        raise TypeError("object %s is not a plug-in object" % uuid)
-    out = set_record(uuid, rec, values)
-    out["record"] = rec
-    return out
 
 
 # ---- tracked raw Python (vw_exec_python) ---------------------------------------
