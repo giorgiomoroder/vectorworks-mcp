@@ -2,7 +2,7 @@
 
 Mac-native MCP server for Vectorworks, Spotlight-first, pure Python.
 Public repo: https://github.com/giorgiomoroder/vectorworks-mcp (MIT).
-Status: **v0.1.0 beta**, tested on Vectorworks 2026 (Update 3 and 31.7; English,
+Status: **v0.2.0 beta**, tested on Vectorworks 2026 (Update 3 and 31.7; English,
 Spotlight) and 2027 (32.1.1, English, 2026-11-19: reads, exec_python,
 duplicate_layer, set_vertices, reverts; a contributor runs it on 2027 German) on macOS. Read `docs/architecture.md` and `docs/vs-notes.md`
 before changing anything that touches Vectorworks.

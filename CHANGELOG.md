@@ -3,7 +3,9 @@
 Releases are tagged after a live-tested batch, not after every commit.
 Dates are the day the batch was verified inside Vectorworks.
 
-## Unreleased
+## 0.2.0 (2026-11-21), beta
+
+Live-tested on Vectorworks 2026 (31.7). 53 tools.
 
 - `vw_insert_hoists` / `vw_list_hoists`: Spotlight hoists (`BrxHoist`) at
   points with ID, location, function, direction and hook height, data
