@@ -362,12 +362,16 @@ def vw_insert_truss_path(
     class_name: Annotated[str | None, _d(_CLASS)] = None,
     library_path: Annotated[str | None, _d("Library .vwx file (vw_list_library) to import the symbols from "
                                            "when they are not in the document yet.")] = None,
+    fit: Annotated[Literal["start", "center", "end"], _d("Where a leg's leftover goes when whole pieces do "
+                                                          "not fill it: 'start' (default) leaves the gap at "
+                                                          "the leg's end, 'center' splits it between both "
+                                                          "ends, 'end' leaves it at the leg's start.")] = "start",
     document: Annotated[str | None, _d(_DOCUMENT)] = None,
 ) -> dict:
     """Build a truss shape (L, U, rectangle, any polyline with matching bends) from straights and corners, one chained system.
-    Each leg is filled from its start with whole straight pieces; a corner
-    piece sits at every interior point and takes its own length from both
-    legs, so legs end up shorter than the path by the leftover `gap`.
+    Each leg takes as many whole straight pieces as fit; a corner piece sits
+    at every interior point and takes its own length from both legs, so legs
+    end up shorter than the path by the leftover `gap` (placed per `fit`).
     Pieces are linked in order (one Braceworks system), hung at z, and get the
     position name. Use vw_insert_truss_run for a single straight run.
     All-or-nothing; one revertible step. Returns {system, piece_length,
@@ -376,8 +380,10 @@ def vw_insert_truss_path(
     app.require_document(document)
     if len(path) < 2:
         raise ToolError("path needs at least two points")
+    if fit not in ("start", "center", "end"):
+        raise ToolError("fit must be start, center or end")
     out = vw("insert_truss_path", straight=straight, corner=corner, path=path, z=z,
-             position_name=position_name, layer=layer, truss_system=None, library_path=library_path)
+             position_name=position_name, layer=layer, truss_system=None, library_path=library_path, fit=fit)
     ops = [{"op": "created", "uuid": it["uuid"]} for it in out["items"]]
     for name in out.get("imported") or []:
         ops.append({"op": "resource", "name": name})

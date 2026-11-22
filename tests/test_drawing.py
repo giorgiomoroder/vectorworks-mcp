@@ -1073,3 +1073,20 @@ def test_truss_path_refuses_bad_input(doc, fake_vs):
         drawing.vw_insert_truss_path("Global Truss F34-300 Straight", "Global Truss F34C21 Corner",
                                      path=[[0, 0], [20, 0], [20, 500]])
     assert truss_items(doc) == []
+
+
+def test_truss_path_fit_center_splits_the_gap_on_each_leg(doc, fake_vs):
+    add_truss_symbol(doc, fake_vs)
+    add_corner_symbol(doc, fake_vs)
+    out = drawing.vw_insert_truss_path("Global Truss F34-300 Straight", "Global Truss F34C21 Corner",
+                                       path=[[0, 0], [1000, 0], [1000, 1000]], fit="center")
+    legs = out["legs"]
+    assert legs[0]["pieces"] == 8 and legs[0]["gap"] == pytest.approx(41.13, abs=0.05)
+    straights = [o for o in truss_items(doc) if o["fields"]["ItemType"] == "Line"]
+    # leg 1: 8 pieces centred in the 986.02 in available from x = 0: start at half the gap
+    assert round(straights[0]["x"], 2) == pytest.approx(41.13 / 2, abs=0.02)
+    # leg 2: available from y = 13.98 to 1000, pieces start half a gap in
+    assert round(straights[8]["y"], 2) == pytest.approx(13.98 + 41.13 / 2, abs=0.02)
+    with pytest.raises(ToolError):
+        drawing.vw_insert_truss_path("Global Truss F34-300 Straight", "Global Truss F34C21 Corner",
+                                     path=[[0, 0], [1000, 0]], fit="sideways")

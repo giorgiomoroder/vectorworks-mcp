@@ -1032,14 +1032,17 @@ def _place_truss_item(rec, symbol, pt, rotation, z, system, prev, position_name)
 
 @_keep_selection
 def insert_truss_path(straight, corner, path, z=0.0, position_name=None, layer=None,
-                      truss_system=None, library_path=None):
+                      truss_system=None, library_path=None, fit="start"):
     """Straight pieces along every leg of `path` (document units) with a
     corner piece at every interior vertex, all chained into one system.
-    Each leg is filled from its start with whole pieces; the leftover is
-    reported as `gap`. All-or-nothing."""
+    Each leg takes whole pieces; the leftover `gap` sits at the leg's end
+    (fit "start"), its start ("end") or is split between both ("center").
+    All-or-nothing."""
     import math
     if len(path) < 2:
         raise ValueError("path needs at least two points")
+    if fit not in ("start", "center", "end"):
+        raise ValueError("fit must be start, center or end")
     imported = []
     for sym in (straight, corner):
         if _is_nil(vs.GetObject(sym)) and library_path:
@@ -1087,6 +1090,10 @@ def insert_truss_path(straight, corner, path, z=0.0, position_name=None, layer=N
             if i > 0:
                 sx, sy = sx + ux * take, sy + uy * take
             n = int(leg["available"] // piece + 1e-9)
+            slack = leg["available"] - piece * n
+            if fit != "start":
+                shift = slack / 2.0 if fit == "center" else slack
+                sx, sy = sx + ux * shift, sy + uy * shift
             for k in range(n):
                 along = piece * k
                 pt = _insertion_for_low(srec, (sx + ux * along, sy + uy * along), leg["heading"])
@@ -1094,7 +1101,7 @@ def insert_truss_path(straight, corner, path, z=0.0, position_name=None, layer=N
                 created.append(h)
                 prev = h_uuid(h)
             end = (sx + ux * piece * n, sy + uy * piece * n)
-            out_legs.append({"pieces": n, "length": leg["length"], "gap": leg["available"] - piece * n,
+            out_legs.append({"pieces": n, "length": leg["length"], "gap": slack,
                              "turn": turns[i] if i < len(turns) else None})
             if i < len(turns):
                 vx, vy = pts[i + 1]
