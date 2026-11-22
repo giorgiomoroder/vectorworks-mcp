@@ -134,7 +134,7 @@ Vectorworks restart. Claude Code users keep using the installer script.
 | `vw_mvr_check` | MVR export pre-flight: devices without GDTF fixture or mode, missing or duplicate Fixture IDs, unpatched or overlapping DMX addresses, loose positions, 2D-only symbols. Read-only; the export itself stays in the File menu |
 | `vw_import_hookup` | Channel hookup from a spreadsheet export (.csv/.tsv): rows matched by channel or position + unit, columns written as device fields; dry run first, then one revertible step |
 | `vw_lightwright_snapshot` | Every Lighting Device as Spotlight's Lightwright Data Exchange last exported it (the XML next to the saved file): works even while a dialog blocks the other tools |
-| `vw_lightwright_patch` | Change device fields through that exchange file (Lightwright-style sparse patch, applied when Vectorworks regains focus); dry run by default, guarded against the known ways to damage a plot, revertible |
+| `vw_lightwright_patch` | Change device fields through that exchange file (Lightwright-style sparse patch, applied when Vectorworks regains focus); dry run by default, guarded against the known ways to damage a plot, revertible; the full export is copied to `~/.vwmcp/lightwright/` first |
 | `vw_list_library_files`, `vw_list_library_resources` | Browse the Vectorworks and user libraries on disk (lighting, truss, people, stage decks) and list the symbols inside a file |
 | `vw_import_resource` | Import one symbol or plug-in style from a library file into the document |
 | `vw_insert_truss_run` | A straight truss run from a library symbol: pieces end to end at a trim height, linked into a Braceworks system, named position |
@@ -224,10 +224,12 @@ anywhere except through your Claude app.
   or hang Vectorworks or to open a dialog. A bad call comes back to Claude as
   an error instead of a modal window you have to click away while nothing
   else can run. Dialog-opening functions need `allow_dialogs=True` on purpose.
-- **Dialogs and open menus block Claude.** If a Vectorworks dialog, or even a
-  right-click menu, is open, Claude's request waits 15 seconds, is cancelled
-  (it will not run later by surprise) and Claude is told why. Close it and
-  ask again; `vw_screenshot` can tell Claude what is in the way.
+- **Alerts and open menus block Claude.** If a system alert (such as "Script
+  Errors"), a plug-in's Object Preferences dialog or a right-click menu is
+  open, Claude's request waits 15 seconds, is cancelled (it will not run
+  later by surprise) and Claude is told why. Close it and ask again;
+  `vw_screenshot` can tell Claude what is in the way. Vectorworks' own
+  dialogs (Preferences, About) do not block; jobs run underneath them.
 - **Right document, every time.** A write names its document, and the bridge
   checks that name inside Vectorworks right before running each job, so a
   document switched in between is refused rather than drawn into.

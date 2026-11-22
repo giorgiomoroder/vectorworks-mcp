@@ -607,16 +607,10 @@ Not checked: argument values, handle object types, `Begin*`/`End*` pairing
 (unpaired `BeginPoly`/`EndSym` crash). Keystone also found: a job sent while
 only the start screen is open segfaults 2026 and 2027 (first `vs` call).
 
-**Live check still owed** (next session on test_mcp.vwx): bridge 0.2.0
-loaded after a Vectorworks restart (`vw_ping` shows 0.2.0);
-`vw_exec_python("vs.ColorIndexToRGB((1000,2000,3000))")` returns
-`VSArgumentError` with no dialog (this was the exact call that produced the
-Script error alert on 2026-11-20); the start-screen window title (close all
-documents, `vw_screenshot` window list) to confirm `START_SCREEN_TITLES`;
-claim/cancel with a right-click menu open; `WrongDocument` from a job with
-`document={"name": "nope"}`; `last_timing.vw_s` with vwlib by reference.
+Live check done 2026-11-20/21 on VW 2026 31.7 (build 879357), Bobby Lee
+plot, 2027 untouched: see "Live findings 2026-11-21" below.
 
-## Lightwright Data Exchange (format from Gribiche64/vectorworks-bridge, not run live here)
+## Lightwright Data Exchange (format from Gribiche64/vectorworks-bridge; live 2026-11-20 on VW 2026)
 
 Spotlight > Preferences > Lightwright > "Use automatic Lightwright Data
 Exchange" makes Vectorworks write `<document>.xml` beside the `.vwx` on
@@ -632,6 +626,68 @@ changed fields, `Lightwright_ID`, `UID`, `AppStamp Lightwright`, 14-digit UTC
 after Vectorworks regains focus. Hazards from that project: an unknown
 `Symbol_Name` breaks fixture selection drawing-wide and permanently (restore
 a backup); `Wattage` is not updated on a type swap; `Delete` actions from a
-stale `.lw6` removed fixtures. Our tools refuse all three. **To verify live:**
-the exact XML file name Vectorworks 2026 writes, that a Channel patch lands,
-and the inverse patch on revert.
+stale `.lw6` removed fixtures. Our tools refuse all three. Verified live
+2026-11-20 (details in "Live findings 2026-11-21"): the file is
+`<document stem>.xml` beside the `.vwx` (`~/Downloads/BobbyLee-BalboaTheater-
+LightPlot_v2026.xml`), a Channel patch landed about a second after the click
+into Vectorworks, the inverse patch on revert landed the same way.
+
+## Live findings 2026-11-21 (safety batch on VW 2026 31.7 build 879357; Bobby Lee plot; 2027 untouched)
+
+- **Bridge upgrade without a restart.** 2026 had bridge 0.1.0 cached (uptime
+  about 6 h). One job did `importlib.reload(vwmcp.vwmcp_bridge)` from inside
+  the old bridge; the next job reported 0.2.0. Useful when a restart is
+  unwelcome, but `install-plugin` docs still say restart.
+- **Checked `vs` works.** `vs.ColorIndexToRGB((1000,2000,3000))` (the call
+  that popped the Script Errors alert on 2026-11-20) came back as
+  `VSArgumentError` in 9 ms, no window in the CoreGraphics list. 2,218
+  functions were type-checked against their live docstrings: 0 parameter-count
+  disagreements, 842 have no "Definition:" docstring (unchecked), 82 of the
+  table's functions do not exist in this Vectorworks.
+- **vwlib by reference:** second call `vw_s` 10 ms instead of 18 ms.
+- **Document guard:** a job with `document={"name": "nope"}` was refused with
+  `WrongDocument` and `never_ran`; `vw_create_layer(..., document=...)` plus
+  `vw_revert_last` round-tripped cleanly (8 ms in-app).
+- **Vectorworks' own dialogs do not block jobs.** Help > About Vectorworks
+  and Tools > Options > Vectorworks Preferences were both open while
+  `vw_ping` ran normally underneath (also the Script Errors alert and the
+  Object Preferences dialog had blocked on 2026-11-20, and a right-click menu
+  on 2026-11-17). So the blockers are system alerts and menu tracking, not
+  Vectorworks' layout-manager dialogs. The 15 s claim/cancel path could
+  therefore not be provoked live (Michael's right-click menu did not stay
+  open either); it is covered by the unit tests only. Side effect found:
+  `name of every window` lists those dialogs, so `vw_list_documents`
+  reported "About Vectorworks" as a document; both titles are now in
+  `documents.HELPER_WINDOWS`.
+- **Start screen = one untitled window.** With all documents closed the
+  CoreGraphics list shows a single layer-0 window, 1728 x 1002, title `""`;
+  no "Vectorworks"/"Home Screen" title at all. `has_document_window` now
+  returns False for "normal windows but none titled" when the Screen
+  Recording permission is granted (`CGPreflightScreenCaptureAccess`, no
+  prompt), None without it (every title is empty then, cannot tell). Live:
+  `vw_ping` refused in 60 ms with "No document is open ... (only the start
+  screen)", job renamed `.cancelled`, Vectorworks kept running. The AppleScript
+  `name of every window` returned an empty name in that state ("No document
+  is open" from `vw_list_documents`), consistent.
+- **Lightwright round trip.** Exchange was already on for the Bobby Lee plot;
+  `~/Downloads/BobbyLee-BalboaTheater-LightPlot_v2026.xml` (697 KB, header
+  TimeStamp 2025-12-08, VWVersion 3120, build 841021) held 398 fixture blocks
+  (Device_Type Light 307 / Moving Light 89 / Practical 2; 36 symbol names;
+  116 with a Lightwright_ID) where `vw_list_lighting_devices` lists 216
+  devices: the export spans more layers (`[VENUE] - LX Rep`, `NNA#18_*`) and
+  probably Lighting Devices our census filter skips; not resolved. Dry run,
+  then a patch for FOH TRUSS unit 27 (UID 4690.1.1.0.0) Channel -> 998:
+  about one second after Michael clicked into the window the drawing read
+  998. Vectorworks then **wrote back only an acknowledgement**: the field
+  list, `<InstrumentData>` with AppStamp Vectorworks, AutoRot2D true and
+  **no fixtures**, the old TimeStamp kept (1,249 bytes). So after a patch
+  the snapshot is empty until the next full export (`vw_lightwright_snapshot`
+  now says so, `hint`). The inverse patch from `vw_revert_last` landed the
+  same way. **The export was stale:** it said channel 999 for unit 27 while
+  the drawing said 901, so the journaled inverse restored 999; set back to
+  901 with `vw_set_lighting_device_fields`. Since then the patch tool reads
+  the drawing's current values for the touched fixtures (one
+  `list_lighting_devices` job per position, matched by Unit Number) and
+  journals those (`inverse_from: live`), falling back to the export's values
+  with a warning; and it copies the full export to `~/.vwmcp/lightwright/`
+  before overwriting (`backup` in the result).

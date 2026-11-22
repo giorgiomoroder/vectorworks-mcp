@@ -24,6 +24,15 @@ MENU_COMMAND = "MCP Run Job"
 MIN_UPTIME = float(os.environ.get("VWMCP_MIN_UPTIME", "30"))
 
 
+def _titles_visible() -> bool | None:
+    """Screen Recording permission (window titles readable); None if unknown."""
+    try:
+        from vwmcp import screenshot
+        return screenshot.screen_capture_allowed()
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _mac_windows(app: str) -> list:
     """Vectorworks' on-screen windows (CoreGraphics, no Apple Event); [] when
     that fails, which only disables the start-screen preflight."""
@@ -73,6 +82,7 @@ class MacTrigger:
         self.min_uptime = min_uptime
         self.uptime = uptime or (lambda: mac_app_uptime(app))
         self.windows = windows or (lambda: _mac_windows(app))
+        self.titles_visible = _titles_visible
         self.spawn = spawn or (
             lambda args: subprocess.Popen(
                 args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
@@ -113,7 +123,7 @@ class MacTrigger:
             )
         from vwmcp.screenshot import has_document_window
 
-        if has_document_window(self.windows(), self.app) is False:
+        if has_document_window(self.windows(), self.app, self.titles_visible()) is False:
             raise TriggerError(
                 f"No document is open in {self.app} (only the start screen). A job sent now "
                 "would crash Vectorworks. Open a document first."

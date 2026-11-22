@@ -94,16 +94,21 @@ def is_script_error_alert(w: Window) -> bool:
 START_SCREEN_TITLES = {"Vectorworks", "Home Screen", "Start Screen"}
 
 
-def has_document_window(windows: list[Window], app: str) -> bool | None:
+def has_document_window(windows: list[Window], app: str,
+                        titles_visible: bool | None = None) -> bool | None:
     """True if a document window is on screen, False if only the start screen
-    (and dialogs or helper windows) are, None if we cannot tell: no titles at
-    all (the Screen Recording permission hides them) or no windows.
+    (and dialogs or helper windows) are, None if we cannot tell.
+    Live 2026-11-21 (VW 2026 31.7): the start screen is one normal window with
+    an EMPTY title (1728 x 1002), so untitled windows alone mean "start screen"
+    when titles_visible is True (the Screen Recording permission is granted:
+    `screen_capture_allowed()`); without that permission every title is empty
+    and we cannot tell (None). No windows at all is None too.
     A job sent while only the start screen shows crashes Vectorworks 2026
     and 2027 (found by Keystone), so the trigger refuses on False."""
     normal = [w for w in windows if w.layer == 0 and w.height >= 200]
     titled = [w for w in normal if w.title.strip()]
     if not titled:
-        return None
+        return False if (normal and titles_visible) else None
     start = START_SCREEN_TITLES | {app}
     return any(w.title.strip() not in start and normal_level_blocker(w) is None for w in titled)
 
@@ -123,6 +128,20 @@ def pick_window(windows: list[Window], title: str | None = None) -> Window:
             "the window isn't minimized)."
         )
     return max(normal, key=lambda w: w.area)
+
+
+def screen_capture_allowed() -> bool | None:
+    """Whether macOS lets this process read window titles (Screen Recording
+    permission), without prompting. None if that cannot be asked."""
+    if sys.platform != "darwin":
+        return None
+    try:
+        cg = ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreGraphics"))
+        cg.CGPreflightScreenCaptureAccess.restype = ctypes.c_bool
+        cg.CGPreflightScreenCaptureAccess.argtypes = []
+        return bool(cg.CGPreflightScreenCaptureAccess())
+    except (OSError, AttributeError):
+        return None
 
 
 def mac_windows(owner_contains: str) -> list[Window]:

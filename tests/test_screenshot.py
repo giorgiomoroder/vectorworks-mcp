@@ -131,3 +131,12 @@ def test_no_titles_at_all_means_we_cannot_tell_so_we_do_not_block():
     ws = [win(1, "", w=1800, h=1100)]  # no Screen Recording permission: titles hidden
     assert ss.has_document_window(ws, app="Vectorworks 2026") is None
     assert ss.has_document_window([], app="Vectorworks 2026") is None
+
+
+def test_untitled_window_alone_is_the_start_screen_when_titles_are_visible():
+    # Live 2026-11-21 (VW 2026 31.7): the start screen is one layer-0 window,
+    # 1728 x 1002, with an empty title. Document windows always carry a name.
+    ws = [win(1, "", w=1728, h=1002)]
+    assert ss.has_document_window(ws, app="Vectorworks 2026", titles_visible=True) is False
+    assert ss.has_document_window(ws, app="Vectorworks 2026", titles_visible=False) is None
+    assert ss.has_document_window([], app="Vectorworks 2026", titles_visible=True) is None

@@ -160,3 +160,63 @@ def test_values_are_xml_escaped(xml):
     snap = lw.parse(xml)
     patch = lw.build_patch(xml.read_text(), snap, [{"uid": "1001.1.1.0.0", "fields": {"Purpose": "R&J <act 2>"}}])
     assert "<Purpose>R&amp;J &lt;act 2&gt;</Purpose>" in patch
+
+
+# Live 2026-11-20 (VW 2026 31.7): after consuming a patch Vectorworks writes
+# back only this: the field list and an empty <InstrumentData>.
+ACK = """<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<SLData>
+  <Inventory>
+    <AppStamp>Lightwright</AppStamp>
+  </Inventory>
+  <ExportFieldList>
+    <AppStamp>Vectorworks</AppStamp>
+    <TimeStamp>20251208162056</TimeStamp>
+    <Channel>Channel</Channel>
+  </ExportFieldList>
+  <InstrumentData>
+    <AppStamp>Vectorworks</AppStamp>
+    <VWVersion>3120</VWVersion>
+    <VWBuild>841021</VWBuild>
+    <AutoRot2D>true</AutoRot2D>
+    </InstrumentData>
+</SLData>
+"""
+
+
+def test_inverse_prefers_live_values_over_the_export(xml):
+    sample_snapshot = lw.parse(xml)
+    changes = [{"uid": "1001.1.1.0.0", "fields": {"Channel": "5", "Color": "R02"}}]
+    live = {"1001.1.1.0.0": {"Channel": "901"}}  # the export said 101: it was stale
+    (inv,) = lw.inverse_changes(sample_snapshot, changes, live=live)
+    assert inv["fields"] == {"Channel": "901", "Color": ""}
+
+
+def test_backup_export_keeps_the_full_file(tmp_path):
+    xml = tmp_path / "Plot.xml"
+    xml.write_text(SAMPLE)
+    out = lw.backup_export(xml, SAMPLE, tmp_path / "backups")
+    assert out.parent == tmp_path / "backups" and out.name.startswith("Plot-") and out.suffix == ".xml"
+    assert out.read_text() == SAMPLE
+
+
+def test_missing_fields_error_shows_the_expected_shape(xml):
+    sample_snapshot = lw.parse(xml)
+    with pytest.raises(lw.PatchError, match='"fields"'):
+        lw.check_changes(sample_snapshot, [{"uid": "1001.1.1.0.0", "Channel": "5"}])
+
+
+def test_acknowledgement_file_parses_empty_and_patch_explains(tmp_path):
+    xml = tmp_path / "Plot.xml"
+    xml.write_text(ACK)
+    snap = lw.parse(xml)
+    assert snap["fixtures"] == [] and lw.is_acknowledgement(snap) is True
+    with pytest.raises(lw.PatchError, match="full export"):
+        lw.check_changes(snap, [{"uid": "1001.1.1.0.0", "fields": {"Channel": "5"}}])
+
+
+def test_record_field_name_from_xml_tag():
+    assert lw.record_field("Unit_Number") == "Unit Number"
+    assert lw.record_field("Inst_Type") == "Inst Type"
+    assert lw.record_field("Template2") == "Template2"
+    assert lw.record_field("User_Field_6") == "User Field 6"

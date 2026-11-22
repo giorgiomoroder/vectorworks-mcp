@@ -248,8 +248,37 @@ def vw_lightwright_snapshot(position: str | None = None, fields: list[str] | Non
         rows = [r for r in rows if r.get("Position", "").casefold() == position.casefold()]
     if fields:
         rows = [{k: r.get(k, "") for k in ["uid", *fields]} for r in rows]
-    return {"available": True, "path": snap["path"], "exported": snap["exported"], "fields": snap["fields"],
-            "count": len(rows), "fixtures": rows[:limit]}
+    out = {"available": True, "path": snap["path"], "exported": snap["exported"], "fields": snap["fields"],
+           "count": len(rows), "fixtures": rows[:limit]}
+    if lightwright.is_acknowledgement(snap):
+        out["hint"] = lightwright.ACK_HINT
+    return out
+
+
+def _live_values(snap: dict, changes: list[dict]) -> dict:
+    """{uid: {xml field: value}} read from the drawing for the fixtures a
+    patch touches (one job per position; matched by Unit Number). Fixtures
+    not found exactly once are left out, so the inverse falls back to the
+    export's values."""
+    by_uid = {f["uid"]: f for f in snap["fixtures"]}
+    wanted: dict[str, dict[str, list[str]]] = {}  # position -> uid -> xml fields
+    for ch in changes:
+        f = by_uid.get(ch["uid"])
+        if f is None or not f.get("Position") or not f.get("Unit_Number"):
+            continue
+        wanted.setdefault(f["Position"], {})[ch["uid"]] = [k for k in ch["fields"] if k != "Use_Legend"]
+    live = {}
+    for position, uids in wanted.items():
+        tags = list(dict.fromkeys(t for ts in uids.values() for t in ts))
+        fields = ["Unit Number", *(lightwright.record_field(t) for t in tags if lightwright.record_field(t) != "Unit Number")]
+        devices = vw("list_lighting_devices", position=position, fields=fields)
+        for uid, ts in uids.items():
+            unit = by_uid[uid]["Unit_Number"]
+            hits = [d for d in devices if str(d.get("Unit Number", "")) == unit]
+            if len(hits) == 1:
+                live[uid] = {t: hits[0][lightwright.record_field(t)] for t in ts
+                             if lightwright.record_field(t) in hits[0]}
+    return live
 
 
 @mcp.tool(annotations=WRITE)
@@ -280,9 +309,22 @@ def vw_lightwright_patch(changes: list[dict], dry_run: bool = True, document: st
     out = {"dry_run": dry_run, "path": str(xml), "changes": len(changes), "patch": patch}
     if dry_run:
         return out
-    op = lightwright.revert_op(xml, text, snap, changes)
+    try:
+        live = _live_values(snap, changes)
+    except Exception:  # noqa: BLE001  (bridge blocked: the export's values will do)
+        live = {}
+    complete = all(all(k in live.get(ch["uid"], {}) for k in ch["fields"] if k != "Use_Legend")
+                   for ch in changes)
+    op = lightwright.revert_op(xml, text, snap, changes, live)
+    backup = lightwright.backup_export(xml, text, lightwright.BACKUP_DIR)
     lightwright.write_patch(xml, patch)
     app.get_journal().record(info.get("name", ""), "vw_lightwright_patch", [op])
+    out["backup"] = str(backup)
+    out["inverse_from"] = "live" if complete else "export"
     out["note"] = ("Written. Vectorworks applies it when it next gains focus (click into it); "
-                   "then re-read with vw_list_lighting_devices.")
+                   "then re-read with vw_list_lighting_devices. The full export was copied to "
+                   f"{backup}; the file beside the document now holds the patch.")
+    if not complete:
+        out["note"] += (" The drawing's current values could not be read for every fixture, so "
+                        "vw_revert_last restores the export's values, which may be stale.")
     return out

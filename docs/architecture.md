@@ -31,7 +31,10 @@
     `~/.vwmcp/vwmcp.log`. Job keys: `code`, `created`, `ttl`, `protocol`,
     optional `libs`, `check`, `document`, `allow_dialogs`.
   - `trigger.py`: macOS trigger (below); also refuses when the window list
-    shows only the start screen (a job then crashes Vectorworks).
+    shows only the start screen (a job then crashes Vectorworks). Live
+    2026-11-21: the 2026 start screen is one untitled normal window, so
+    "windows but no titles" means start screen when the Screen Recording
+    permission is granted (titles readable), unknown without it.
   - `vwlib.py`: helper library executed *inside* Vectorworks, sent with
     every typed tool call (inline for a 0.1 bridge, by reference from 0.2)
     so the installed bridge never needs updating for new tools.

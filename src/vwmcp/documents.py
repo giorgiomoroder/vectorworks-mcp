@@ -35,7 +35,10 @@ APP = config.DEFAULT_APP
 # Non-document windows Vectorworks reports: unnamed and palette windows, and
 # (2027) a window named after the app itself. Invisible windows are left out
 # by the script ("Migration Progress", "Exporting MVR" exist hidden in 2027).
-HELPER_WINDOWS = {"", "Window", "Fenster", "Vectorworks"}
+# Not documents: helper windows, and the non-modal dialogs seen live
+# (2026-11-20: About and Preferences stay open while scripts run).
+HELPER_WINDOWS = {"", "Window", "Fenster", "Vectorworks",
+                  "About Vectorworks", "Vectorworks Preferences"}
 STATE = DEFAULT_ROOT / "document_paths.json"
 
 LIST_SCRIPT = f'''

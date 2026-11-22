@@ -46,7 +46,12 @@ before changing anything that touches Vectorworks.
   `.vwx` (format from Gribiche64/vectorworks-bridge PROTOCOL.md): read without
   a job, sparse Update patches with the protocol's guards, revert = inverse
   patch from the journaled envelope (op `lightwright`, handled server side in
-  `vw_revert_last`). **Not run live yet.**
+  `vw_revert_last`). Live 2026-11-20 on the Bobby Lee plot (vs-notes "Live
+  findings 2026-11-21"): patch and revert land on the next click into
+  Vectorworks; afterwards the file is only an acknowledgement (no fixtures)
+  until the next full export; the export can be stale, so the inverse is
+  journaled from live values and the full export is backed up to
+  `~/.vwmcp/lightwright/`.
 - `src/vwmcp/data/vs_types.json`, `vs_safety.json` + `scripts/import-vs-*.py`
   + `NOTICE`: the tables the bridge checks against (see hard rules).
   `docs/superpowers/plans/2026-11-20-safety-batch.md` is the plan; its "Live
@@ -99,7 +104,11 @@ before changing anything that touches Vectorworks.
   are refused, interactive ones unless the job has `allow_dialogs`. Both
   tables are installed beside the bridge (`install-plugin`, `vw_doctor`
   checks). Argument *values* and handle object types are still unchecked.
-  An open right-click menu blocks jobs the same way; `vw_screenshot` lists
+  Live 2026-11-20: the colour call that opened the alert now returns
+  `VSArgumentError` in 9 ms, no window. What blocks jobs is the Script
+  Errors alert, a plug-in's Object Preferences dialog and a right-click
+  menu held open; Vectorworks' own dialogs (About, Vectorworks Preferences)
+  do **not**, jobs run underneath (live 2026-11-21). `vw_screenshot` lists
   what is in front (`in_front`) without touching the app. `vslint.py` (from
   the PO4 fork, bgst84) checks syntax, vs.* argument counts, deprecated
   calls and the safety classes before `vw_exec_python` / `vw_exec_file`
@@ -107,8 +116,11 @@ before changing anything that touches Vectorworks.
   `data/vs_api_<year>.json`, refreshed with `vwmcp dump-api`.
 - Jobs sent while only the start screen is open (no document) crash
   Vectorworks 2026 and 2027 (Keystone's finding). `trigger.py` refuses via
-  the CoreGraphics window list (`screenshot.has_document_window`); the
-  start-screen window title set is `START_SCREEN_TITLES` (verify live).
+  the CoreGraphics window list (`screenshot.has_document_window`). Live
+  2026-11-21: the 2026 start screen is one layer-0 window with an **empty
+  title**, so "normal windows but none titled" counts as start screen when
+  Screen Recording is granted (`screen_capture_allowed`), unknown otherwise.
+  Refusal verified live (60 ms, nothing sent).
 - Job protocol since 0.2 (client.py): 15 s claim phase, then cancel by
   renaming the job to `.cancelled` (never runs late), re-trigger every 2 s,
   `target_alive` probe, result wait `VWMCP_TIMEOUT` (120 s). Write tools
@@ -131,7 +143,7 @@ before changing anything that touches Vectorworks.
 
 ```bash
 uv sync
-uv run pytest -q          # ~310 tests; fake executor runs the real bridge code
+uv run pytest -q          # ~320 tests; fake executor runs the real bridge code
 uv run vwmcp              # stdio server
 uv build                  # wheel must contain vwmcp/_plugin/vwmcp_bridge.py
 ```

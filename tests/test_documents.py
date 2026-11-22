@@ -30,6 +30,9 @@ def test_parse_windows_skips_helpers_and_duplicates():
     # Vectorworks 2027 lists a window named after the app before the documents
     out = documents.parse_windows("Vectorworks\nplan.vwx\nWindow\n")
     assert out == {"documents": ["plan.vwx"], "active": "plan.vwx"}
+    # Live 2026-11-20: non-modal dialogs are windows too and are not documents
+    out = documents.parse_windows("Vectorworks Preferences\nAbout Vectorworks\nplan.vwx\n")
+    assert out == {"documents": ["plan.vwx"], "active": "plan.vwx"}
 
 
 def test_switch_by_remembered_path(fake_vw):

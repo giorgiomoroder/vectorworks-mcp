@@ -113,3 +113,16 @@ def test_sends_when_a_document_window_exists_or_titles_are_unknown(root):
     t._pending = None
     t()
     assert len(procs) == 2
+
+
+def test_refuses_on_the_untitled_start_screen_when_titles_are_visible(root):
+    from vwmcp.screenshot import Window
+    t, procs = make(root, uptime=120)
+    t.windows = lambda: [Window(1, "", 0, 0, 0, 1728, 1002)]
+    t.titles_visible = lambda: True
+    with pytest.raises(TriggerError, match="No document is open"):
+        t()
+    assert procs == []
+    t.titles_visible = lambda: False  # no Screen Recording permission: cannot tell, send
+    t()
+    assert len(procs) == 1

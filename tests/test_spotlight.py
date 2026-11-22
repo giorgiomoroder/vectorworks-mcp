@@ -178,3 +178,62 @@ def test_lightwright_patch_apply_writes_and_journals_and_reverts(monkeypatch, tm
     back = generic.vw_revert_last()
     assert back["reverted_tool"] == "vw_lightwright_patch" and back["lightwright"] is True
     assert "<Channel>101</Channel>" in xml.read_text()
+
+
+def test_lightwright_snapshot_explains_the_empty_acknowledgement_file(monkeypatch, tmp_path):
+    from test_lightwright import ACK
+    (tmp_path / "Plot.vwx").write_bytes(b"")
+    (tmp_path / "Plot.xml").write_text(ACK)
+    monkeypatch.setattr(spotlight, "vw", lambda fn, **kw: {"name": "Plot.vwx", "path": str(tmp_path / "Plot.vwx")})
+    out = spotlight.vw_lightwright_snapshot()
+    assert out["available"] and out["count"] == 0
+    assert "full export" in out["hint"]
+
+
+def _lightwright_apply_setup(monkeypatch, tmp_path, live_devices):
+    from test_lightwright import SAMPLE
+    from vwmcp.journal import Journal
+    from vwmcp.tools import generic
+    (tmp_path / "Plot.vwx").write_bytes(b"")
+    xml = tmp_path / "Plot.xml"
+    xml.write_text(SAMPLE)
+    j = Journal(tmp_path / "journal.jsonl")
+    calls = []
+
+    def fake_vw(fn, **kw):
+        calls.append((fn, kw))
+        if fn == "document_info":
+            return {"name": "Plot.vwx", "path": str(tmp_path / "Plot.vwx")}
+        if fn == "list_lighting_devices":
+            return live_devices
+        return "Plot.vwx"
+
+    monkeypatch.setattr(spotlight, "vw", fake_vw)
+    monkeypatch.setattr(generic, "vw", fake_vw)
+    monkeypatch.setattr(spotlight.app, "require_document", lambda d: None)
+    monkeypatch.setattr(spotlight.app, "get_journal", lambda: j)
+    monkeypatch.setattr(spotlight.lightwright, "BACKUP_DIR", tmp_path / "backups")
+    return xml, j, calls, generic
+
+
+def test_lightwright_patch_apply_backs_up_and_reverts_to_live_values(monkeypatch, tmp_path):
+    from test_lightwright import SAMPLE
+    # The export says unit 1 on LX 1 is channel 101; the drawing says 901 (stale export).
+    xml, j, calls, generic = _lightwright_apply_setup(
+        monkeypatch, tmp_path, [{"uuid": "u1", "Unit Number": "1", "Channel": "901"}])
+    out = spotlight.vw_lightwright_patch([{"uid": "1001.1.1.0.0", "fields": {"Channel": "5"}}], dry_run=False)
+    assert out["inverse_from"] == "live"
+    backup = tmp_path / "backups" / out["backup"].split("/")[-1]
+    assert backup.read_text() == SAMPLE
+    live_calls = [kw for fn, kw in calls if fn == "list_lighting_devices"]
+    assert live_calls == [{"position": "LX 1", "fields": ["Unit Number", "Channel"]}]
+    generic.vw_revert_last()
+    assert "<Channel>901</Channel>" in xml.read_text()
+
+
+def test_lightwright_patch_falls_back_to_export_values_when_the_device_is_not_found(monkeypatch, tmp_path):
+    xml, j, calls, generic = _lightwright_apply_setup(monkeypatch, tmp_path, [])
+    out = spotlight.vw_lightwright_patch([{"uid": "1001.1.1.0.0", "fields": {"Channel": "5"}}], dry_run=False)
+    assert out["inverse_from"] == "export" and "stale" in out["note"]
+    generic.vw_revert_last()
+    assert "<Channel>101</Channel>" in xml.read_text()

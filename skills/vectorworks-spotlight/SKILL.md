@@ -26,9 +26,10 @@ work, so the first rule is: know which document you are in, and say so.
 - **Undo is `vw_revert_last`**, one tool call at a time, repeatable.
   Vectorworks merges back-to-back scripted edits into one Cmd-Z step, so never
   promise Cmd-Z granularity. `vw_delete_objects` cannot be reverted: ask first.
-- **Dialogs block everything.** An open dialog or right-click menu stalls
-  jobs; after 15 s the request is cancelled (it never runs later) and you are
-  told. `vw_screenshot` shows what is in front (`in_front`) without touching
+- **Alerts and menus block everything.** A Script Errors alert, a plug-in's
+  Object Preferences dialog or an open right-click menu stalls jobs; after
+  15 s the request is cancelled (it never runs later) and you are told.
+  Vectorworks' own dialogs (Preferences, About) do not block. `vw_screenshot` shows what is in front (`in_front`) without touching
   the app; the user has to close it. Never call a `vs.*` function that opens
   a dialog (`vw_vs_lookup` shows `safety: interactive`) unless the user
   wants that dialog and you pass `allow_dialogs=True`.
@@ -80,10 +81,14 @@ after and anything Spotlight overrode.
 2. Read fixtures by `uid` with the exported fields (works even while a dialog
    blocks the bridge; data is as of the last export).
 3. To write: `vw_lightwright_patch(changes)` dry run first, then
-   `dry_run=False`; the user clicks into Vectorworks so it imports the patch;
-   verify with `vw_list_lighting_devices`. Never change `Symbol_Name` to one
-   no fixture uses; a type change needs `Wattage`. Prefer
+   `dry_run=False`; the user clicks into Vectorworks so it imports the patch
+   (about a second); verify with `vw_list_lighting_devices`. Never change
+   `Symbol_Name` to one no fixture uses; a type change needs `Wattage`. Prefer
    `vw_set_lighting_device_fields` when the bridge works.
+4. After a patch Vectorworks writes back only an acknowledgement: the next
+   snapshot shows zero fixtures (`hint`) until the user redoes the full
+   export. The export can be older than the drawing; the result says whether
+   the undo was journaled from live values (`inverse_from`).
 
 ### MVR export pre-flight
 1. `vw_mvr_check` (optionally `position=`). Errors block or empty the MVR:
