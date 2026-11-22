@@ -7,12 +7,18 @@ import io
 import json
 import re
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
+from pydantic import Field
 
 from vwmcp import app, hookup, lightwright, mvr
 from vwmcp.app import READ, WRITE, mcp, vw
+
+# Shared description of the `document` guard parameter of the write tools.
+DOC = ("Name of the document this call is meant for (as vw_list_documents shows it, with or "
+       "without .vwx). If another document is active nothing changes; use vw_switch_document "
+       "first. Always set it for a write.")
 
 REPORT_FIELDS = [
     "Position", "Unit Number", "Inst Type", "Wattage", "Purpose", "Channel",
@@ -65,41 +71,58 @@ def format_report(rows: list[dict], fields: list[str], fmt: str) -> str:
 
 @mcp.tool(annotations=READ)
 def vw_list_lighting_devices(
-    position: str | None = None,
-    layer: str | None = None,
-    fields: list[str] | None = None,
-    limit: int = 5000,
+    position: Annotated[str | None, Field(description=(
+        "Only devices whose Position field equals this position name exactly (case-sensitive, "
+        "as vw_list_positions lists it). Omit for every position."))] = None,
+    layer: Annotated[str | None, Field(description=(
+        "Only devices on this design layer (exact layer name). Omit for all layers."))] = None,
+    fields: Annotated[list[str] | None, Field(description=(
+        "Lighting Device parameter names to return, any of: Unit Number, Channel, Dimmer, Universe, "
+        "DMX Address, UniverseAddress, Absolute Address, Num Channels, Purpose, Position, Inst Type, "
+        "Wattage, Color, Template, Template2, Focus, Circuit Number, Circuit Name, Mark, Symbol Name, "
+        "Fixture Mode, GDTF Fixture Name, Device Type, User Field 1 to 6, or any other parameter of "
+        "the Lighting Device record. Omit for the default set (all of the above)."))] = None,
+    limit: Annotated[int, Field(description=(
+        "Maximum number of rows returned, after sorting. Default 5000."))] = 5000,
 ) -> list[dict]:
-    """All Spotlight Lighting Devices, sorted by position then unit number.
+    """List the Spotlight Lighting Devices in the live drawing, one row per device, sorted by
+    position then unit number.
 
-    Default fields: Unit Number, Channel, Dimmer, Universe, DMX Address,
-    UniverseAddress, Absolute Address, Num Channels, Purpose, Position,
-    Inst Type, Wattage, Color, Template (gobo), Template2, Focus, Circuit
-    Number/Name, Mark, Symbol Name, Fixture Mode, GDTF Fixture Name, Device
-    Type, User Field 1-6. Pass `fields` to choose others (any Lighting Device
-    parameter name). Filter by exact position name or layer. Each row has a uuid.
+    Read-only; one job inside Vectorworks. Each row has `uuid` (stable id for
+    vw_set_lighting_device_fields and vw_move_objects), `layer`, `class` and the
+    requested fields as strings. Use this to look at the plot, verify a write, or
+    find a device; use vw_lighting_device_report for paperwork (CSV/JSON file),
+    vw_list_positions for the hang structure, and vw_lightwright_snapshot only when
+    you want the Lightwright exchange file's view (as of its last export) or the
+    bridge is blocked by a dialog.
     """
     return vw("list_lighting_devices", fields=fields, position=position, layer=layer, limit=limit)
 
 
 @mcp.tool(annotations=WRITE)
 def vw_set_lighting_device_fields(
-    updates: list[dict[str, Any]], document: str | None = None
+    updates: Annotated[list[dict[str, Any]], Field(description=(
+        "One item per device: a selector plus \"fields\". Selector keys: \"uuid\" (from "
+        "vw_list_lighting_devices); or \"position\" and \"unit_number\" together (unit numbers "
+        "repeat per position); or \"unit_number\" alone when it is unique in the plot; or "
+        "\"channel\" when unique. \"fields\" maps Lighting Device parameter names to new string "
+        "values, for example {\"position\": \"1E\", \"unit_number\": \"3\", \"fields\": "
+        "{\"Channel\": \"101\", \"Color\": \"R02\"}}. Addresses go in \"UniverseAddress\" "
+        "as \"universe/address\" such as \"2/101\"."))],
+    document: Annotated[str | None, Field(description=DOC)] = None,
 ) -> list[dict]:
-    """Bulk-edit Lighting Device fields in one undo step.
+    """Change fields of one or more Lighting Devices in the live drawing, verified by
+    reading them back, as one revertible step.
 
-    `updates` is a list of {selector, "fields": {name: value}} where selector is
-    one of: "uuid"; "position" + "unit_number" (unit numbers repeat per
-    position); "unit_number" alone if unique; or "channel" if unique.
-    Example: [{"position": "1E", "unit_number": "3", "fields": {"Channel": "101",
-    "Color": "R02"}}].
-
-    All selectors and field names are validated first; if any fail, nothing
-    changes. Revert exactly this call with vw_revert_last. Universe / DMX Address edits are applied via UniverseAddress
-    (Spotlight's source of truth). Returns before/after per device as re-read
-    from Vectorworks, with `not_applied` listing anything Spotlight overrode.
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first).
+    Changes the document. This is the default way to edit device data; use
+    vw_import_hookup for many rows from a spreadsheet export and
+    vw_lightwright_patch only for Lightwright round trips or when a dialog
+    blocks the bridge. Every selector and field name is validated first; if any
+    fails, nothing changes. Universe / DMX Address edits are applied through
+    UniverseAddress (Spotlight's source of truth), so set that field rather than
+    Universe or DMX Address alone. Undo exactly this call with vw_revert_last.
+    Returns one item per device with `uuid`, `before`, `after` (re-read from
+    Vectorworks) and `not_applied` for values Spotlight overrode; trust `after`.
     """
     app.require_document(document)
     for u in updates:
@@ -118,27 +141,51 @@ def vw_set_lighting_device_fields(
 
 
 @mcp.tool(annotations=READ)
-def vw_list_positions(include_devices: bool = True) -> dict:
-    """Lighting positions (Light Position Obj, Lighting Pipe, Ladder, Truss,
-    Hanging Position) with the devices whose Position field names them.
-    Also reports how many devices have no position, and position names used
-    by devices that have no matching position object."""
+def vw_list_positions(
+    include_devices: Annotated[bool, Field(description=(
+        "True (default) lists each position's devices (uuid, unit number, channel, purpose); "
+        "False returns only the positions with their device counts, which is much shorter "
+        "on a large plot."))] = True,
+) -> dict:
+    """List the lighting positions in the live drawing with the devices hung on each,
+    plus the devices that have no position and position names no object carries.
+
+    Read-only; one job inside Vectorworks. Positions are Light Position Objects,
+    Lighting Pipes, Pipe Ladders, Truss and Hanging Positions, matched to devices
+    by the device's Position field (a text match, so a typo shows up here as a
+    position name without an object). Returns {positions: [{name, type, uuid,
+    devices or count}], without_position: count, names_without_object: [...]}.
+    Use vw_list_truss for truss runs by system and vw_list_lighting_devices for
+    the device rows themselves.
+    """
     return vw("list_positions", include_devices=include_devices)
 
 
 @mcp.tool(annotations=READ)
 def vw_lighting_device_report(
-    fields: list[str] | None = None,
-    sort_by: str | None = "Channel",
-    position: str | None = None,
-    format: Literal["csv", "json"] = "csv",
-    output_path: str | None = None,
+    fields: Annotated[list[str] | None, Field(description=(
+        "Columns, in order, as Lighting Device parameter names. Omit for the paperwork default: "
+        "Position, Unit Number, Inst Type, Wattage, Purpose, Channel, UniverseAddress, Circuit "
+        "Number, Color, Template, Focus."))] = None,
+    sort_by: Annotated[str | None, Field(description=(
+        "Column to sort by, naturally (2 before 10, 1E before 2E; blank values last). Default "
+        "Channel; Position then Unit Number gives an instrument schedule. None keeps drawing order."))] = "Channel",
+    position: Annotated[str | None, Field(description=(
+        "Only devices on this position (exact name). Omit for the whole plot."))] = None,
+    format: Annotated[Literal["csv", "json"], Field(description=(
+        "\"csv\" (default) for a spreadsheet, \"json\" for a list of row objects."))] = "csv",
+    output_path: Annotated[str | None, Field(description=(
+        "File path on this Mac to write the report to (folders are created; ~ is expanded). "
+        "Omit to only return the text."))] = None,
 ) -> str:
-    """Paperwork export of Lighting Devices (channel hookup, instrument
-    schedule...). Default columns: Position, Unit Number, Inst Type, Wattage,
-    Purpose, Channel, UniverseAddress, Circuit Number, Color, Template, Focus.
-    Sorted naturally by `sort_by` (blank values last). Returns the CSV/JSON
-    text, and also writes it to `output_path` if given."""
+    """Produce paperwork from the live Lighting Devices, such as a channel hookup or an
+    instrument schedule, as CSV or JSON text and optionally a file.
+
+    Read-only in Vectorworks; writes only the file you name. Returns the full
+    report text (the same text is written to output_path). For rows to reason
+    about rather than a document to hand over, use vw_list_lighting_devices; to
+    load a hookup back in, vw_import_hookup.
+    """
     fields = fields or REPORT_FIELDS
     rows = vw("list_lighting_devices", fields=fields, position=position)
     text = format_report(sort_rows(rows, sort_by), fields, format)
@@ -150,20 +197,29 @@ def vw_lighting_device_report(
 
 
 @mcp.tool(annotations=READ)
-def vw_mvr_check(position: str | None = None) -> dict:
-    """Pre-flight for File > Export > Export MVR: finds the Lighting Device data
-    gaps that make an MVR (My Virtual Rig) file incomplete, without changing
-    anything. Errors (would break the export): no GDTF fixture type, no fixture
-    mode, missing or duplicate Fixture ID, no DMX patch, overlapping DMX
-    footprints in one universe, footprint past channel 512. Warnings: device
-    without position, position name with no position object, symbol with 2D
-    geometry only (exports as empty geometry), symbol missing from the document.
-    Fields this document lacks are listed under `field_missing` and their checks
-    skipped. `position` limits the check to one position. Fix findings with
-    vw_set_lighting_device_fields (Fixture ID, UniverseAddress, Position) or by
-    importing a hybrid symbol (vw_list_library_resources / vw_import_resource).
-    The export itself has no scripting call; run it from the File menu after a
-    clean check."""
+def vw_mvr_check(
+    position: Annotated[str | None, Field(description=(
+        "Limit the check to the devices on this position (exact name). Omit for the whole plot."))] = None,
+) -> dict:
+    """Check the Lighting Device data for the gaps that make an MVR export incomplete,
+    before the user runs File > Export > Export MVR.
+
+    Read-only; nothing changes and the export itself is a menu action the user
+    runs (there is no scripting call for it). Errors, which would break or empty
+    the MVR (My Virtual Rig) file: no GDTF fixture type, no fixture mode, missing
+    or duplicate Fixture ID, no DMX patch, overlapping DMX footprints in one
+    universe, footprint past channel 512. Warnings: device without position,
+    position name with no position object, symbol with 2D geometry only (exports
+    as empty geometry), symbol missing from the document. Returns {ok,
+    device_count, summary: {check: count}, issues: [{check, severity:
+    "error" | "warning", message, devices: [{uuid, position, unit, channel}]}],
+    document, next_steps}; a "field_missing" issue lists the fields this
+    document lacks, whose checks were skipped. Fix findings with
+    vw_set_lighting_device_fields (Fixture ID, UniverseAddress, Position,
+    Fixture Mode), the Object Info palette (GDTF fixture) or by importing a
+    hybrid symbol (vw_list_library_resources, vw_import_resource), then check
+    again.
+    """
     data = vw("mvr_data")
     if position is not None:
         data["devices"] = [r for r in data["devices"] if r.get("Position", "") == position]
@@ -180,28 +236,39 @@ def vw_mvr_check(position: str | None = None) -> dict:
 
 @mcp.tool(annotations=WRITE)
 def vw_import_hookup(
-    path: str,
-    key: Literal["channel", "unit_number", "position+unit_number"] = "channel",
-    column_map: dict[str, str] | None = None,
-    dry_run: bool = True,
-    document: str | None = None,
+    path: Annotated[str, Field(description=(
+        "Path on this Mac to a .csv or .tsv exported from the spreadsheet; the first row holds "
+        "the column headers."))],
+    key: Annotated[Literal["channel", "unit_number", "position+unit_number"], Field(description=(
+        "Which column(s) identify the device each row belongs to: \"channel\" (default, the "
+        "Channel column), \"unit_number\" (only when unit numbers are unique in the whole plot) "
+        "or \"position+unit_number\" (Position and Unit Number columns together; unit numbers "
+        "repeat per position)."))] = "channel",
+    column_map: Annotated[dict[str, str] | None, Field(description=(
+        "Spreadsheet header to Lighting Device field name, for headers the automatic match does "
+        "not understand, for example {\"What\": \"Purpose\"}. Automatic matches are "
+        "case-insensitive and know Address/Addr/DMX (UniverseAddress), Unit (Unit Number), "
+        "Inst/Type (Inst Type) and Gel (Color). Omit when the headers are field names."))] = None,
+    dry_run: Annotated[bool, Field(description=(
+        "True (default) changes nothing and returns the plan to show the user; False applies it "
+        "and then needs `document`."))] = True,
+    document: Annotated[str | None, Field(description=(
+        DOC + " Required when dry_run is False."))] = None,
 ) -> dict:
-    """Import a channel hookup / instrument schedule from a spreadsheet export
-    (.csv or .tsv, first row = headers) into the Lighting Devices. Each row is
-    matched to one device by `key`: its Channel, its Unit Number, or Position +
-    Unit Number (unit numbers repeat per position). The other columns are
-    written as Lighting Device fields when their header is a field name
-    (case-insensitive; Address/Addr/DMX mean UniverseAddress, Unit means Unit
-    Number, Inst/Type mean Inst Type, Gel means Color); `column_map` overrides
-    that, e.g. {"What": "Purpose"}. Unknown headers are ignored and listed.
-    Empty cells are not written. With dry_run (default) nothing changes: you get
-    the planned updates, ignored columns and skipped rows to show the user.
-    With dry_run=False and `document` set, the updates go through
-    vw_set_lighting_device_fields: all-or-nothing (a row that matches no device
-    or several stops everything), one revertible step, with `not_applied` for
-    anything Spotlight overrode. document: name of the document this call is
-    meant for; if another document is active nothing changes (use
-    vw_switch_document first)."""
+    """Load a channel hookup or instrument schedule from a spreadsheet export into the
+    Lighting Devices, as a dry run first and then one revertible step.
+
+    Changes the document only with dry_run=False. Each row is matched to exactly
+    one device by `key`; the other columns are written as Lighting Device fields
+    when their header is a field name, unknown headers are ignored and listed,
+    empty cells are not written. The dry run returns {dry_run, rows, updates
+    (the planned per-device changes), ignored_columns, skipped_rows, next_step}.
+    Applying goes through vw_set_lighting_device_fields: all-or-nothing (a row
+    that matches no device, or several, stops everything), undone with
+    vw_revert_last, with `result` holding before/after and `not_applied` for
+    values Spotlight overrode. For a handful of edits call
+    vw_set_lighting_device_fields directly.
+    """
     try:
         rows = hookup.read_table(path)
     except (OSError, ValueError) as e:
@@ -227,17 +294,30 @@ def vw_import_hookup(
 
 
 @mcp.tool(annotations=READ)
-def vw_lightwright_snapshot(position: str | None = None, fields: list[str] | None = None,
-                            limit: int = 2000) -> dict:
-    """Read every Lighting Device from the Lightwright Data Exchange XML that
-    Spotlight writes next to the saved document (when the exchange is on).
-    No job runs for the read itself, so it works even while a dialog blocks
-    other tools, but it shows the state as of the last export (Vectorworks
-    rewrites the file when it loses focus). Returns {available, path,
-    exported, fields, count, fixtures: [{uid, lightwright_id, Channel, ...}]},
-    or {available: False, hint} with how to switch the exchange on.
-    position: only fixtures whose Position matches (case-insensitive);
-    fields: keep only these columns (plus uid)."""
+def vw_lightwright_snapshot(
+    position: Annotated[str | None, Field(description=(
+        "Only fixtures whose Position matches this name (case-insensitive). Omit for all."))] = None,
+    fields: Annotated[list[str] | None, Field(description=(
+        "Exchange column names to keep, as the file spells them (Channel, Unit_Number, Inst_Type, "
+        "Purpose, Color, Absolute_Address, User_Field_1 ...; the result's `fields` lists what the "
+        "export contains). `uid` is always included. Omit for every column."))] = None,
+    limit: Annotated[int, Field(description=(
+        "Maximum number of fixtures returned (`count` still gives the total). Default 2000."))] = 2000,
+) -> dict:
+    """Read the Lighting Devices as Spotlight's Lightwright Data Exchange file last
+    exported them, from the XML beside the saved document.
+
+    Read-only. The file itself is read without a job (only the document's path
+    is asked from Vectorworks), so this works even while a dialog blocks the
+    other tools, but it shows the plot as of the last export, which can be older
+    than the drawing; vw_list_lighting_devices is the live view. Returns
+    {available, path, exported (timestamp), fields, count, fixtures: [{uid,
+    lightwright_id, accessories, <fields>...}]}; {available: False, hint} when the
+    exchange is off (the hint says how to switch it on); and count 0 with a
+    `hint` right after a vw_lightwright_patch, when Vectorworks has written back
+    only an acknowledgement and the user must redo the full export. UIDs from
+    here are what vw_lightwright_patch takes.
+    """
     info = vw("document_info")
     xml = lightwright.find_xml(info.get("path"))
     if xml is None:
@@ -282,19 +362,34 @@ def _live_values(snap: dict, changes: list[dict]) -> dict:
 
 
 @mcp.tool(annotations=WRITE)
-def vw_lightwright_patch(changes: list[dict], dry_run: bool = True, document: str | None = None) -> dict:
-    """Change Lighting Device fields through the Lightwright exchange file
-    instead of a job: changes = [{"uid": "1246.1.1.0.0", "fields": {"Channel": "201"}}]
-    (UIDs and field names from vw_lightwright_snapshot). dry_run (default)
-    returns the patch without writing. An applied patch lands in Vectorworks
-    1 to 2 s after it next gains focus (click into it), then verify with
-    vw_list_lighting_devices. vw_revert_last writes the inverse patch.
-    Refuses deletes, fields not in the export, symbols no fixture uses (an
-    unknown symbol breaks fixture selection drawing-wide, irreversibly) and
-    type changes without Wattage. Prefer vw_set_lighting_device_fields when
-    the bridge works; this is for Lightwright round trips and blocked sessions.
-    document: optional guard; if given and another document is active,
-    nothing changes."""
+def vw_lightwright_patch(
+    changes: Annotated[list[dict], Field(description=(
+        "One item per fixture: {\"uid\": \"1246.1.1.0.0\", \"fields\": {\"Channel\": \"201\"}}. "
+        "`uid` and the field names (exchange spelling: Channel, Unit_Number, Inst_Type, Purpose, "
+        "Color ...) come from vw_lightwright_snapshot; only fields in the export can be written, "
+        "plus Symbol_Name, Inst_Type and Wattage."))],
+    dry_run: Annotated[bool, Field(description=(
+        "True (default) returns the patch text without writing anything; False writes it."))] = True,
+    document: Annotated[str | None, Field(description=DOC)] = None,
+) -> dict:
+    """Change Lighting Device fields through Spotlight's Lightwright Data Exchange file
+    instead of a job, for Lightwright round trips or when a dialog blocks the bridge.
+
+    With dry_run=False this changes the document, indirectly: the patch is
+    written beside the .vwx and Vectorworks applies it 1 to 2 s after it next
+    gains focus, so the user has to click into Vectorworks; verify afterwards
+    with vw_list_lighting_devices. Prefer vw_set_lighting_device_fields when the
+    bridge works. Refuses deletes, fields not in the export, a Symbol_Name no
+    fixture uses yet (an unknown symbol breaks fixture selection drawing-wide,
+    irreversibly) and a type change without Wattage. Before writing, the full
+    export is copied to ~/.vwmcp/lightwright/ (`backup`) and the drawing's
+    current values of the touched fixtures are journaled (`inverse_from`: live,
+    or export when a fixture could not be read, in which case the undo restores
+    possibly stale export values); vw_revert_last writes the inverse patch, which
+    again needs a click. After a patch the file holds only Vectorworks'
+    acknowledgement until the next full export. Returns {dry_run, path, changes,
+    patch, and when written: backup, inverse_from, note}.
+    """
     app.require_document(document)
     info = vw("document_info")
     xml = lightwright.find_xml(info.get("path"))

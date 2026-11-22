@@ -37,11 +37,19 @@ def project_version() -> str:
         return tomllib.load(fh)["project"]["version"]
 
 
+_ABBREVIATIONS = ("e.g.", "i.e.", "vs.", "etc.", "approx.", "min.", "max.")
+
+
 def _first_sentence(text: str) -> str:
+    """The first sentence: ends at . ! or ? followed by a space or the end,
+    unless that period belongs to an abbreviation such as e.g. or i.e."""
     text = " ".join((text or "").split())
-    m = re.match(r"(.+?[.!?])(\s|$)", text)
-    out = m.group(1) if m else text
-    return out[:280]
+    for m in re.finditer(r"[.!?](?=\s|$)", text):
+        end = m.end()
+        if any(text[:end].endswith(a) for a in _ABBREVIATIONS):
+            continue
+        return text[:end][:280]
+    return text[:280]
 
 
 def tool_entries() -> list[dict]:

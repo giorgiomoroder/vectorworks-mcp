@@ -3,9 +3,10 @@ delete, view. Writes are journaled for vw_revert_last."""
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
+from pydantic import Field
 
 from vwmcp import app, classes, library, platform
 from vwmcp.app import READ, WRITE, mcp, vw
@@ -16,38 +17,77 @@ def _journal(result: dict, tool: str, ops: list[dict] | None) -> dict:
     return result
 
 
+def _d(text: str) -> Any:
+    """A fresh pydantic Field carrying a parameter description (the MCP schema
+    takes descriptions from Annotated metadata only, not from docstrings)."""
+    return Field(description=text)
+
+
+# Descriptions shared by many tools (each call makes a fresh Field).
+_DOCUMENT = ("Name of the document this call may change, as listed by vw_list_documents. "
+             "If given and another document is in front, nothing changes and the call fails; "
+             "use vw_switch_document first. Always pass it for writes.")
+_LAYER = "Design layer to place the new object(s) on, by name. Omitted: the user's active layer."
+_CLASS = ("Class to assign to the new object(s), by name (created if missing). Applied in a "
+          "second step and reported as 'class' in the result. Omitted: the active class.")
+_PURPOSE = "Text for the object's Spotlight 'Purpose' field. Omitted: left empty."
+_POSITION = "Text for the object's Spotlight 'Position' field. Omitted: left empty."
+_UNITS = "document units"
+
+
 @mcp.tool(annotations=READ)
-def vw_list_library_files(query: str = "", limit: int = 50) -> list[dict]:
-    """Vectorworks library files (.vwx) on this Mac whose path contains every
-    word of `query`, e.g. "lighting", "truss", "people", "stage deck", "audio".
-    Searches the Vectorworks application libraries and the user libraries.
-    Reads the disk only; then use vw_list_library_resources on a path."""
+def vw_list_library_files(
+    query: Annotated[str, _d("Words that must all appear in the file's path, case-insensitive; "
+                             "for example 'truss', 'lighting', 'people', 'stage deck' or 'audio'. "
+                             "Empty lists every library file.")] = "",
+    limit: Annotated[int, _d("Maximum number of files to return.")] = 50,
+) -> list[dict]:
+    """Find Vectorworks library files (.vwx) installed on this Mac by words in their path.
+    Searches the Vectorworks application libraries and the user libraries on
+    disk only; nothing is sent to Vectorworks and nothing is imported. Use it
+    first when a symbol (truss, fixture, people, backline) is not yet in the
+    document, then vw_list_library_resources on one of the returned paths and
+    vw_import_resource to bring a symbol in. Only libraries that are actually
+    downloaded are found; many Vectorworks libraries are download-on-demand.
+    Returns a list of {library, folder, name, path} rows."""
     return library.find_library_files(query, limit=limit)
 
 
 @mcp.tool(annotations=READ)
 def vw_list_library_resources(
-    path: str, name_contains: str | None = None, type_code: int = 16, limit: int = 500
+    path: Annotated[str, _d("Absolute path of a library .vwx file, as returned by vw_list_library_files.")],
+    name_contains: Annotated[str | None, _d("Keep only resources whose name contains this text, "
+                                           "case-insensitive. Omitted: all resources of that type.")] = None,
+    type_code: Annotated[int, _d("Vectorworks resource type: 16 = symbol definitions (includes plug-in "
+                                 "styles such as truss, lighting pipe and fixture symbols), 47 = record formats.")] = 16,
+    limit: Annotated[int, _d("Maximum number of names to return.")] = 500,
 ) -> dict:
-    """Names of the resources inside a library file (from vw_list_library_files)
-    without importing anything. type_code 16 = symbol definitions, which
-    includes plug-in styles (truss, lighting pipe, fixture symbols); 47 =
-    record formats."""
+    """List the resource names inside one library file without importing anything.
+    Vectorworks reads the file's resource list; the document is not changed.
+    Use it after vw_list_library_files to pick the exact symbol name for
+    vw_import_resource. Returns {path, type_code, count, names: [...]}."""
     return vw("library_resources", path=path, type_code=type_code,
               name_contains=name_contains, limit=limit)
 
 
 @mcp.tool(annotations=WRITE)
 def vw_import_resource(
-    path: str, name: str, new_name: str | None = None, type_code: int = 16,
-    document: str | None = None,
+    path: Annotated[str, _d("Absolute path of the library .vwx file (from vw_list_library_files).")],
+    name: Annotated[str, _d("Exact resource name inside that file (from vw_list_library_resources).")],
+    new_name: Annotated[str | None, _d("Name for the imported copy when the document already has a "
+                                      "resource called `name`. Omitted: imported under its own name.")] = None,
+    type_code: Annotated[int, _d("Resource type: 16 = symbol definition or plug-in style (default), "
+                                 "47 = record format.")] = 16,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
 ) -> dict:
-    """Import one resource (symbol or plug-in style) from a library file into
-    the document through Vectorworks' own importer, so it can then be placed
-    with vw_insert_symbol / vw_create_pio. If the document already has a
-    resource with that name, give new_name to import a copy. Revertible.
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+    """Import one symbol or plug-in style from a library file into the open document.
+    Goes through Vectorworks' own importer, so the resource arrives complete
+    (a truss symbol brings its Braceworks record, a fixture symbol its
+    Lighting Device data). Changes the document's resource list only; nothing
+    is placed in the drawing. Afterwards place it with vw_insert_symbol
+    (plain symbols) or the typed insert tools (truss runs, lighting devices).
+    One revertible step: vw_revert_last removes the imported resource.
+    Returns {name, type_code} with the name as it exists in the document."""
     app.require_document(document)
     out = vw("import_resource", path=path, name=name, type_code=type_code, new_name=new_name)
     return _journal(out, "vw_import_resource", [{"op": "resource", "name": out["name"]}])
@@ -55,24 +95,29 @@ def vw_import_resource(
 
 @mcp.tool(annotations=WRITE)
 def vw_create_pio(
-    plugin: str,
-    x: float,
-    y: float,
-    rotation: float = 0.0,
-    parameters: dict[str, Any] | None = None,
-    layer: str | None = None,
-    class_name: str | None = None,
-    document: str | None = None,
+    plugin: Annotated[str, _d("Internal plug-in name, case-sensitive: 'TrussItem', 'Lighting Device', "
+                              "'Light Position Obj', ... Learn names from vw_find_objects(type='Plug-in "
+                              "Object') plus vw_get_pio_parameters on an existing object.")],
+    x: Annotated[float, _d(f"Insertion point x in {_UNITS}.")],
+    y: Annotated[float, _d(f"Insertion point y in {_UNITS}.")],
+    rotation: Annotated[float, _d("Rotation in degrees, counter-clockwise, 0 = along +x.")] = 0.0,
+    parameters: Annotated[dict[str, Any] | None, _d("Parameter fields to set by exact field name, for example "
+                                                   "{'Symbol': 'F34 Straight 2m', 'Name': 'T1'} for a TrussItem. "
+                                                   "An unknown name aborts the call. Omitted: plug-in defaults.")] = None,
+    layer: Annotated[str | None, _d(_LAYER)] = None,
+    class_name: Annotated[str | None, _d(_CLASS)] = None,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
 ) -> dict:
-    """Place a Spotlight/Vectorworks plug-in object by its INTERNAL name at x, y
-    (document units) with a rotation, and set parameters by field name. Known
-    names: "TrussItem" (truss; parameters Symbol = a truss symbol in the
-    document, Name, Type, PositionName), "Lighting Device", "Light Position
-    Obj". Use vw_find_objects(type="Plug-in Object") + vw_get_pio_parameters on
-    an existing object to learn other names and fields. Unknown parameter
-    names abort the call and nothing is placed. Revertible.
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+    """Place one Vectorworks or Spotlight plug-in object by its internal name and set its parameters.
+    The general-purpose way to create a plug-in object when no typed tool
+    fits; prefer vw_insert_truss_run, vw_insert_lighting_devices,
+    vw_insert_stage_decks and the other insert tools where they exist, since
+    those know the objects' quirks. The object is created and regenerated with
+    the given parameters; nothing else in the document is touched. Unknown
+    parameter names abort the call and nothing is placed. One revertible step.
+    Returns the new object's summary as vw_find_objects lists objects ({uuid,
+    type, name, layer, class, bbox...}) plus class; read the resulting fields
+    with vw_get_pio_parameters."""
     app.require_document(document)
     info = vw("create_pio", plugin=plugin, x=x, y=y, rotation=rotation,
               parameters=parameters, layer=layer)
@@ -86,18 +131,30 @@ def vw_create_pio(
 
 
 @mcp.tool(annotations=READ)
-def vw_get_pio_parameters(uuid: str) -> dict:
-    """All parameter fields of a plug-in object (truss, fixture, stage deck...)
-    with their current values, plus the plug-in name."""
+def vw_get_pio_parameters(
+    uuid: Annotated[str, _d("UUID of a plug-in object, from vw_find_objects, vw_get_selection or an insert tool's result.")],
+) -> dict:
+    """Read every parameter field of one plug-in object with its current value.
+    Works for truss, lighting devices, stage decks, hoists and any other
+    plug-in object; also tells you the plug-in's internal name, which is what
+    vw_create_pio needs. Reads only. Returns {plugin, fields: {field: value}}."""
     return vw("pio_parameters", uuid=uuid)
 
 
 @mcp.tool(annotations=WRITE)
-def vw_set_pio_parameters(uuid: str, values: dict[str, Any], document: str | None = None) -> dict:
-    """Set parameter fields on a plug-in object by field name and regenerate
-    it. All-or-nothing: an unknown field name changes nothing. Revertible.
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+def vw_set_pio_parameters(
+    uuid: Annotated[str, _d("UUID of the plug-in object to change.")],
+    values: Annotated[dict[str, Any], _d("Fields to set, by exact field name as vw_get_pio_parameters lists "
+                                         "them, with their new values. One unknown name changes nothing.")],
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
+) -> dict:
+    """Change parameter fields of one plug-in object by field name and regenerate it.
+    Use it for objects that have no typed editor; for Lighting Devices prefer
+    vw_set_lighting_device_fields, which also handles addresses and read-back.
+    All-or-nothing: an unknown field name changes nothing. One revertible
+    step: vw_revert_last restores the previous values. Returns {uuid, plugin,
+    after: {field: value}} re-read after the regeneration, so values Vectorworks
+    rejected show their actual state."""
     app.require_document(document)
     out = vw("set_pio_parameters", uuid=uuid, values=values)
     ops = [{"op": "fields", "uuid": uuid, "record": out["record"], "before": out["before"]}]
@@ -107,26 +164,37 @@ def vw_set_pio_parameters(uuid: str, values: dict[str, Any], document: str | Non
 
 @mcp.tool(annotations=WRITE)
 def vw_create_layer(
-    name: str, kind: Literal["design", "sheet"] = "design", scale: float | None = None,
-    activate: bool = False,
-    document: str | None = None,
+    name: Annotated[str, _d("Name of the new layer. Fails if a layer of that name exists.")],
+    kind: Annotated[Literal["design", "sheet"], _d("'design' for a model/drawing layer, 'sheet' for a "
+                                                  "presentation sheet layer.")] = "design",
+    scale: Annotated[float | None, _d("Design layers only: scale denominator, for example 48 for "
+                                      "1/4\" = 1', 100 for 1:100. Omitted: the document's default.")] = None,
+    activate: Annotated[bool, _d("True makes the new layer the active layer. Default False keeps "
+                                 "the user's active layer.")] = False,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
 ) -> dict:
-    """Create a design or sheet layer (design layers: optional scale denominator,
-    e.g. 48 for 1/4" = 1'). The user's active layer stays active unless
-    activate=True. Revertible (the layer is deleted).
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+    """Create a design layer or a sheet layer in the open document.
+    Adds the layer only; nothing is drawn on it. For a sheet with a viewport
+    and title block use vw_create_sheet instead. The user's active layer stays
+    active unless activate=True. One revertible step: vw_revert_last deletes
+    the layer. Returns {name, kind, active}."""
     app.require_document(document)
     out = vw("create_layer", name=name, kind=kind, scale=scale, activate=activate)
     return _journal(out, "vw_create_layer", [{"op": "layer", "name": name}])
 
 
 @mcp.tool(annotations=WRITE)
-def vw_create_class(name: str, document: str | None = None) -> dict:
-    """Create a class (use "-" for hierarchy, e.g. "Lighting-Truss"). The active
-    class is left unchanged. Revertible.
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+def vw_create_class(
+    name: Annotated[str, _d("Class name; use '-' for hierarchy, for example 'Lighting-Truss'. "
+                            "Fails if the class exists.")],
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
+) -> dict:
+    """Create one class in the open document with default attributes.
+    For a whole consistent class set with colours and line weights use
+    vw_apply_class_standard instead. The active class is left unchanged and
+    no object is moved into the new class (pass class_name= to the insert
+    tools, or vw_set_record). One revertible step: vw_revert_last deletes the
+    class. Returns {name}."""
     app.require_document(document)
     out = vw("create_class", name=name)
     return _journal(out, "vw_create_class", [{"op": "class", "name": name}])
@@ -134,22 +202,25 @@ def vw_create_class(name: str, document: str | None = None) -> dict:
 
 @mcp.tool(annotations=WRITE)
 def vw_apply_class_standard(
-    standard: str = "spotlight", only: list[str] | None = None, overwrite: bool = False,
-    document: str | None = None,
+    standard: Annotated[str, _d("Name of the bundled class standard. 'spotlight' (the only one today) "
+                                "defines Lighting-Instruments / -Labels / -Positions / -Focus Points / "
+                                "-Cables, Rigging-Truss / -Hoists, Stage-Decks / -Steps, Soft Goods, "
+                                "Audio, Video, Scenery, People, Venue-Architecture / -Seating, Notes, "
+                                "Dimensions.")] = "spotlight",
+    only: Annotated[list[str] | None, _d("Limit the work to these class names or name prefixes, for "
+                                         "example ['Lighting', 'Rigging-Truss']. Omitted: the whole standard.")] = None,
+    overwrite: Annotated[bool, _d("True restyles classes that already exist (pen, fill, line weight; "
+                                  "recorded for revert). Default False leaves existing classes alone.")] = False,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
 ) -> dict:
-    """Give the document a consistent class set with colours and line weights,
-    so plots look tidy and layers can be filtered: the "spotlight" standard has
-    Lighting-Instruments / -Labels / -Positions / -Focus Points / -Cables,
-    Rigging-Truss / -Hoists, Stage-Decks / -Steps, Soft Goods, Audio, Video,
-    Scenery, People, Venue-Architecture / -Seating, Notes, Dimensions. Missing
-    classes are created and styled; existing ones are left alone unless
-    overwrite=True (then their pen, fill and line weight are changed and
-    recorded for revert). `only` limits it to names or prefixes, e.g.
-    ["Lighting", "Rigging-Truss"]. Afterwards use vw_create_pio / insert tools
-    with class_name=, or move objects into classes with vw_set_record. One
-    revertible step (created classes are deleted, restyled ones restored).
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+    """Give the document a consistent set of Spotlight classes with colours and line weights.
+    Use it once per show file so plots look tidy and layers can be filtered;
+    for a single ad-hoc class use vw_create_class. Missing classes are created
+    and styled; existing ones are left alone unless overwrite=True. No object
+    changes class: afterwards pass class_name= to the insert tools or use
+    vw_set_record. One revertible step (created classes are deleted, restyled
+    ones restored). Returns {standard, created: [...], restyled: [...],
+    unchanged: [...], note?}."""
     app.require_document(document)
     try:
         spec = classes.load(standard)
@@ -171,27 +242,29 @@ def vw_apply_class_standard(
 
 @mcp.tool(annotations=WRITE)
 def vw_create_sheet(
-    name: str,
-    layers: list[str],
-    scale: float = 48,
-    hide_classes: list[str] | None = None,
-    title: str | None = None,
-    sheet_number: str | None = None,
-    project: str | None = None,
-    document: str | None = None,
+    name: Annotated[str, _d("Name of the new sheet layer. Fails if a layer of that name exists.")],
+    layers: Annotated[list[str], _d("Design layer names the viewport shows; at least one.")],
+    scale: Annotated[float, _d("Viewport scale denominator: 48 = 1/4\" = 1'-0\", 96 = 1/8\", 50 or 100 "
+                               "for metric. Must be positive.")] = 48,
+    hide_classes: Annotated[list[str] | None, _d("Class names hidden in this viewport only, for example "
+                                                 "['Notes', 'Lighting-Focus Points']. Omitted: all classes visible.")] = None,
+    title: Annotated[str | None, _d("Sheet title written into the title block's 'Sheet Title' field. "
+                                    "Any of title, sheet_number or project adds a Title Block Border.")] = None,
+    sheet_number: Annotated[str | None, _d("Sheet number written into the title block's 'Sheet Number' field.")] = None,
+    project: Annotated[str | None, _d("Project name written into the title block's 'Project Name' field.")] = None,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
 ) -> dict:
-    """A presentation sheet: a sheet layer `name` with one viewport that shows
-    the given design layers at 1:`scale` (48 = 1/4" = 1'-0", 96 = 1/8", 50 or
-    100 for metric) in Top/Plan, with `hide_classes` (e.g. ["Notes",
-    "Lighting-Focus Points"]) hidden in that viewport. With `title`,
-    `sheet_number` or `project` a Title Block Border is added at the sheet
-    origin and those fields written where the title block style has them
-    (the result lists fields_set / fields_unknown / fields_available). The
-    user's active layer is restored. One vw_revert_last deletes the sheet with
-    its viewport and title block. Follow up with vw_set_view / vw_screenshot
-    after the user switches to the sheet, or vw_render_layers for a picture.
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+    """Create a presentation sheet: a sheet layer with one Top/Plan viewport of chosen design layers and an optional title block.
+    Use it to make a printable plot page; vw_create_layer makes a bare layer
+    only. The viewport shows `layers` at 1:`scale` with `hide_classes` hidden
+    in that viewport. With title, sheet_number or project, a Title Block
+    Border is placed at the sheet origin and those fields written where the
+    title block style has them. The user's active layer is restored. One
+    revertible step: vw_revert_last deletes the sheet with its viewport and
+    title block. Returns {sheet, viewport (uuid), title_block: {uuid, fields_set,
+    fields_unknown, fields_available}?, title_block_error?}. To look at it, the
+    user switches to the sheet and you call vw_screenshot, or use
+    vw_render_layers for a picture."""
     if not layers:
         raise ToolError("layers: name at least one design layer to show in the viewport")
     if scale <= 0:
@@ -210,12 +283,17 @@ def vw_create_sheet(
 
 
 @mcp.tool(annotations=WRITE)
-def vw_delete_objects(uuids: list[str], document: str | None = None) -> dict:
-    """Delete objects by uuid. All-or-nothing: if any uuid is unknown nothing is
-    deleted. NOT revertible with vw_revert_last (only Cmd-Z in Vectorworks),
-    and it blocks reverting earlier edits, so confirm with the user first.
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+def vw_delete_objects(
+    uuids: Annotated[list[str], _d("UUIDs of the objects to delete, from vw_find_objects, vw_get_selection "
+                                   "or a tool result. At least one; one unknown UUID deletes nothing.")],
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
+) -> dict:
+    """Permanently delete objects by UUID; the one write that vw_revert_last cannot undo.
+    Only Cmd-Z inside Vectorworks can bring them back, and the deletion also
+    blocks reverting earlier journaled edits, so confirm with the user before
+    calling it. To undo something a tool placed, use vw_revert_last instead
+    of deleting by hand. All-or-nothing: if any UUID is unknown nothing is
+    deleted. Returns {deleted: n}."""
     app.require_document(document)
     if not uuids:
         raise ToolError("no uuids given")
@@ -225,13 +303,16 @@ def vw_delete_objects(uuids: list[str], document: str | None = None) -> dict:
 
 @mcp.tool(annotations=WRITE)
 def vw_move_objects(
-    uuids: list[str], dx: float = 0.0, dy: float = 0.0, dz: float = 0.0,
-    document: str | None = None,
+    uuids: Annotated[list[str], _d("UUIDs of the objects to move; at least one. One unknown UUID moves nothing.")],
+    dx: Annotated[float, _d(f"Offset along x in {_UNITS}.")] = 0.0,
+    dy: Annotated[float, _d(f"Offset along y in {_UNITS}.")] = 0.0,
+    dz: Annotated[float, _d(f"Offset along z in {_UNITS}, for 3D objects. 0 keeps the height.")] = 0.0,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
 ) -> dict:
-    """Move objects by an offset in document units (dz for 3D). All-or-nothing
-    on unknown uuids. Revertible (moved back).
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+    """Move objects by an offset, keeping their rotation and everything else.
+    All-or-nothing on unknown UUIDs. One revertible step: vw_revert_last moves
+    them back (a plug-in regeneration between move and revert can leave an
+    object off by a fraction of a unit). Returns {moved: n}."""
     app.require_document(document)
     if not uuids:
         raise ToolError("no uuids given")
@@ -242,41 +323,45 @@ def vw_move_objects(
 
 @mcp.tool(annotations=WRITE)
 def vw_set_view(
-    view: Literal["top_plan", "top", "bottom", "front", "back", "left", "right",
-                  "iso", "iso_right", "iso_left"] | None = None,
-    fit: bool = False,
+    view: Annotated[Literal["top_plan", "top", "bottom", "front", "back", "left", "right",
+                            "iso", "iso_right", "iso_left"] | None,
+                    _d("View to switch to: 'top_plan' (2D plan), the orthogonal 3D views 'top', 'bottom', "
+                       "'front', 'back', 'left', 'right', or the isometrics 'iso', 'iso_right', 'iso_left'. "
+                       "Omitted: the view is left as it is.")] = None,
+    fit: Annotated[bool, _d("True zooms so every object on visible layers fits the window.")] = False,
 ) -> dict:
-    """Change the drawing view (standard 3D views or Top/Plan) and/or zoom to
-    fit all objects, e.g. before vw_screenshot. Changes no objects, so it is
-    not journaled."""
+    """Change the drawing view or zoom to fit, typically before vw_screenshot.
+    Changes how the user sees the document, not the document itself, so it is
+    not journaled and vw_revert_last does not undo it. For a view-independent
+    picture use vw_render_layers instead. Returns {view, fit}."""
     return vw("set_view", view=view, fit=fit)
 
 
 @mcp.tool(annotations=WRITE)
 def vw_insert_truss_run(
-    symbol: str,
-    x: float,
-    y: float,
-    count: int,
-    rotation: float = 0.0,
-    z: float = 0.0,
-    position_name: str | None = None,
-    layer: str | None = None,
-    class_name: str | None = None,
-    library_path: str | None = None,
-    document: str | None = None,
+    symbol: Annotated[str, _d("Name of a truss symbol already in the document (vw_list_symbols), or in "
+                              "the library file given as library_path.")],
+    x: Annotated[float, _d(f"Start point x of the run in {_UNITS} (the first piece begins here).")],
+    y: Annotated[float, _d(f"Start point y of the run in {_UNITS}.")],
+    count: Annotated[int, _d("Number of pieces placed end to end; at least 1.")],
+    rotation: Annotated[float, _d("Direction of the run in degrees: 0 = along +x, 90 = along +y.")] = 0.0,
+    z: Annotated[float, _d(f"Height of the truss centre line in {_UNITS}.")] = 0.0,
+    position_name: Annotated[str | None, _d("Spotlight position name written into every piece, so lighting "
+                                            "devices can refer to the run. Omitted: left empty.")] = None,
+    layer: Annotated[str | None, _d(_LAYER)] = None,
+    class_name: Annotated[str | None, _d(_CLASS)] = None,
+    library_path: Annotated[str | None, _d("Library .vwx path (vw_list_library_files) to import the symbol "
+                                           "from first, when it is not in the document yet.")] = None,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
 ) -> dict:
-    """Place a straight run of `count` truss pieces end to end, the way
-    Spotlight's Insert Truss tool does: TrussItem objects on the symbol's
-    length centres, starting at (x, y) and heading along `rotation` degrees
-    (0 = +x, 90 = +y), centres at height z (document units), linked into one
-    new Braceworks truss system, dimensions and type from the symbol's
-    Braceworks record. `symbol` must be a truss symbol in the document, or
-    give `library_path` (from vw_list_library_files) to import it first.
-    All-or-nothing; one vw_revert_last removes the whole run (and the
-    import).
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+    """Place a straight run of truss pieces end to end, linked into one truss system, the way Spotlight's Insert Truss tool does.
+    Creates `count` TrussItem objects on the symbol's length centres from
+    (x, y) along `rotation`, dimensions, weight and type from the symbol's
+    Braceworks record, chained into a new truss system. Corners and towers
+    are not supported yet; for a single odd piece use vw_create_pio with
+    'TrussItem'. All-or-nothing; one revertible step removes the whole run
+    (and the import, if any). Returns {system, piece_length, total_length,
+    imported, pieces: [{uuid, bbox}], class?}; check with vw_list_truss."""
     app.require_document(document)
     if count < 1:
         raise ToolError("count must be at least 1")
@@ -294,48 +379,60 @@ def vw_insert_truss_run(
 
 
 @mcp.tool(annotations=READ)
-def vw_list_truss(system: str | None = None, layer: str | None = None) -> dict:
-    """Inventory of truss in the document: TrussItem objects grouped by
-    truss system (the Braceworks "T<n>" name), each run's pieces in order
-    along the C_START_UUID chain, with count, total length and weight,
-    symbols, position names, each piece's 3D centre and the run's plan
-    bounding box (document units, view-independent). `linked` is False when a
-    run's pieces are not chained. Filter by `system` or `layer`."""
+def vw_list_truss(
+    system: Annotated[str | None, _d("Only this truss system, by its Braceworks name such as 'T2'. "
+                                     "Omitted: every system.")] = None,
+    layer: Annotated[str | None, _d("Only truss on this design layer. Omitted: all layers.")] = None,
+) -> dict:
+    """Inventory of the truss in the document, grouped by truss system in chain order.
+    Reads only. Each system lists its pieces in order along the chain with
+    count, total length and weight, symbols, position names, each piece's 3D
+    centre and the run's plan bounding box (document units, independent of
+    the current view); `linked` is False when a run's pieces are not chained.
+    Returns {runs: [{system, count, total_length, total_weight_kg, positions,
+    symbols, linked, bbox, pieces: [{uuid, symbol, length, center, class,
+    layer}]}], total_pieces, total_length}."""
     return vw("list_truss", system=system, layer=layer)
 
 
 @mcp.tool(annotations=WRITE)
 def vw_insert_lighting_devices(
-    symbol: str,
-    x: float,
-    y: float,
-    count: int = 1,
-    spacing: float = 0.0,
-    rotation: float = 0.0,
-    position: str | None = None,
-    z: float | None = None,
-    start_unit: int | None = 1,
-    unit_step: int = 1,
-    channel: int | None = None,
-    channel_step: int = 1,
-    purpose: str | None = None,
-    layer: str | None = None,
-    class_name: str | None = None,
-    library_path: str | None = None,
-    document: str | None = None,
+    symbol: Annotated[str, _d("Name of a fixture symbol already in the document (vw_list_symbols), or in "
+                              "the library file given as library_path.")],
+    x: Annotated[float, _d(f"First fixture's x in {_UNITS}.")],
+    y: Annotated[float, _d(f"First fixture's y in {_UNITS}.")],
+    count: Annotated[int, _d("How many fixtures to hang in a row; at least 1.")] = 1,
+    spacing: Annotated[float, _d(f"Distance between fixtures in {_UNITS}, measured along `rotation`. "
+                                 "0 with count > 1 stacks them on one point.")] = 0.0,
+    rotation: Annotated[float, _d("Direction of the row in degrees: 0 = along +x, 90 = along +y.")] = 0.0,
+    position: Annotated[str | None, _d("Spotlight Position name to hang them on, as listed by "
+                                       "vw_list_positions; the fixtures are raised to that position's height "
+                                       "unless z is given. Omitted: no position, height z or 0.")] = None,
+    z: Annotated[float | None, _d(f"Explicit hanging height in {_UNITS}. Omitted: the position's height.")] = None,
+    start_unit: Annotated[int | None, _d("Unit Number of the first fixture; following ones add unit_step. "
+                                         "None leaves Unit Number empty.")] = 1,
+    unit_step: Annotated[int, _d("Increment of the Unit Number from one fixture to the next.")] = 1,
+    channel: Annotated[int | None, _d("Channel of the first fixture; following ones add channel_step. "
+                                      "Omitted: Channel left empty.")] = None,
+    channel_step: Annotated[int, _d("Increment of the Channel from one fixture to the next.")] = 1,
+    purpose: Annotated[str | None, _d(_PURPOSE)] = None,
+    layer: Annotated[str | None, _d(_LAYER)] = None,
+    class_name: Annotated[str | None, _d(_CLASS)] = None,
+    library_path: Annotated[str | None, _d("Library .vwx path (vw_list_library_files) to import the symbol "
+                                           "from first, when it is not in the document yet.")] = None,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
 ) -> dict:
-    """Hang `count` lighting fixtures of a fixture symbol (must be in the
-    document, or give `library_path` to import it) from (x, y) along
-    `rotation` degrees, `spacing` apart (document units), the way Spotlight's
-    insertion tool does: each becomes a Lighting Device with Inst Type,
-    wattage, DMX footprint and GDTF data from the symbol. Sets Position (a
-    position name from vw_list_positions; devices are raised to that
-    position's height unless z is given), Unit Number from start_unit,
-    Channel from `channel`, and Purpose. All-or-nothing; one vw_revert_last
-    removes them all. Fields are re-read and anything Spotlight overrode is
-    reported under not_applied.
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+    """Hang a row of lighting fixtures as real Spotlight Lighting Devices with position, unit numbers, channels and purpose set.
+    Places the symbol `count` times from (x, y) along `rotation`, `spacing`
+    apart, and converts each to a Lighting Device the way Spotlight's
+    insertion tool does, so Inst Type, wattage, DMX footprint and GDTF data
+    come from the symbol. To change fixtures that already exist use
+    vw_set_lighting_device_fields; to place a plain (non-fixture) symbol use
+    vw_insert_symbol. All-or-nothing; one revertible step removes them all.
+    Fields are re-read after Spotlight's reset: trust the returned values, and
+    anything Spotlight overrode is listed under not_applied. Returns
+    {devices: [{uuid, unit, inst_type, Position, Unit Number, Channel, Purpose,
+    Inst Type}], imported, z, class?, not_applied?}."""
     app.require_document(document)
     if count < 1:
         raise ToolError("count must be at least 1")
@@ -376,33 +473,39 @@ def vw_insert_lighting_devices(
     return out
 
 
+_STRUCTURE = ("Leg style of each deck: 'Legs-Basic', 'Legs-Braced', 'Folding', 'Deck Only', "
+              "'Border' or 'Simple'.")
+_DECK_CORNER = ("Platform corner {axis} in {units}: each deck extends +width along `rotation` and "
+                "+depth at 90 degrees from it, so at rotation 0 the platform fills x..x+width*columns, "
+                "y..y+depth*rows.")
+
+
 @mcp.tool(annotations=WRITE)
 def vw_insert_stage_decks(
-    width: float,
-    depth: float,
-    height: float,
-    x: float,
-    y: float,
-    columns: int = 1,
-    rows: int = 1,
-    rotation: float = 0.0,
-    structure: Literal["Legs-Basic", "Legs-Braced", "Folding", "Deck Only", "Border", "Simple"] = "Legs-Basic",
-    purpose: str | None = None,
-    position: str | None = None,
-    layer: str | None = None,
-    class_name: str | None = None,
-    document: str | None = None,
+    width: Annotated[float, _d(f"Width of one deck in {_UNITS}, measured along `rotation`.")],
+    depth: Annotated[float, _d(f"Depth of one deck in {_UNITS}, across `rotation`.")],
+    height: Annotated[float, _d(f"Deck top height above the floor in {_UNITS}.")],
+    x: Annotated[float, _d(_DECK_CORNER.format(axis="x", units=_UNITS))],
+    y: Annotated[float, _d(_DECK_CORNER.format(axis="y", units=_UNITS))],
+    columns: Annotated[int, _d("Number of decks along `rotation`; at least 1.")] = 1,
+    rows: Annotated[int, _d("Number of decks across; at least 1.")] = 1,
+    rotation: Annotated[float, _d("Platform direction in degrees: 0 = width along +x, 90 = along +y.")] = 0.0,
+    structure: Annotated[Literal["Legs-Basic", "Legs-Braced", "Folding", "Deck Only", "Border", "Simple"],
+                         _d(_STRUCTURE)] = "Legs-Basic",
+    purpose: Annotated[str | None, _d(_PURPOSE)] = None,
+    position: Annotated[str | None, _d(_POSITION)] = None,
+    layer: Annotated[str | None, _d(_LAYER)] = None,
+    class_name: Annotated[str | None, _d(_CLASS)] = None,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
 ) -> dict:
-    """Build a platform from Spotlight Stage Deck objects: `columns` x `rows`
-    rectangular decks of `width` x `depth` at `height` (all document units),
-    tiled edge to edge. (x, y) is the platform's corner: each deck extends
-    +width along `rotation` degrees (0 = +x) and +depth at +90 from it, so at
-    rotation 0 the platform fills x..x+width*columns, y..y+depth*rows.
-    `structure` is the deck's leg style; `purpose`/`position` fill the deck's
-    Spotlight fields. Returns each deck's 3D centre and size. All-or-nothing;
-    one vw_revert_last removes the whole platform.
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+    """Build a platform from Spotlight Stage Deck objects tiled edge to edge in a grid.
+    Creates `columns` x `rows` rectangular decks of `width` x `depth` at
+    `height`, starting at corner (x, y). For a platform with a flight of
+    steps in one call use vw_insert_platform; for the steps alone
+    vw_insert_stage_steps. All-or-nothing; one revertible step removes the
+    whole platform. The geometry is read back after creation. Returns
+    {count, footprint: {width, depth}, decks: [{uuid, center: [x, y, z],
+    size: [w, d, h]}], class?}."""
     app.require_document(document)
     if columns < 1 or rows < 1:
         raise ToolError("columns and rows must be at least 1")
@@ -421,39 +524,45 @@ def vw_insert_stage_decks(
     return out
 
 
+_STEP_KIND = ("Stage Steps type: 'Self-Adjusting' (rental unit with a fixed stringer, shallow pitch "
+              "on low stages), 'Frame Free-Standing', 'Solid Free-Standing', 'Open Free-Standing' or "
+              "'Simple' (compact flight).")
+
+
 @mcp.tool(annotations=WRITE)
 def vw_insert_platform(
-    width: float,
-    depth: float,
-    height: float,
-    x: float,
-    y: float,
-    columns: int = 1,
-    rows: int = 1,
-    rotation: float = 0.0,
-    steps_on: Literal["front", "back", "left", "right"] | None = None,
-    step_count: int | None = None,
-    tread_width: float | None = None,
-    step_kind: Literal["Self-Adjusting", "Frame Free-Standing", "Solid Free-Standing", "Open Free-Standing", "Simple"] = "Self-Adjusting",
-    rails: bool = False,
-    structure: Literal["Legs-Basic", "Legs-Braced", "Folding", "Deck Only", "Border", "Simple"] = "Legs-Basic",
-    purpose: str | None = None,
-    position: str | None = None,
-    layer: str | None = None,
-    class_name: str | None = None,
-    document: str | None = None,
+    width: Annotated[float, _d(f"Width of one deck in {_UNITS}, measured along `rotation`.")],
+    depth: Annotated[float, _d(f"Depth of one deck in {_UNITS}, across `rotation`.")],
+    height: Annotated[float, _d(f"Deck top height above the floor in {_UNITS}; also the stage height the steps descend.")],
+    x: Annotated[float, _d(_DECK_CORNER.format(axis="x", units=_UNITS))],
+    y: Annotated[float, _d(_DECK_CORNER.format(axis="y", units=_UNITS))],
+    columns: Annotated[int, _d("Number of decks along `rotation`; at least 1.")] = 1,
+    rows: Annotated[int, _d("Number of decks across; at least 1.")] = 1,
+    rotation: Annotated[float, _d("Platform direction in degrees: 0 = width along +x, 90 = along +y.")] = 0.0,
+    steps_on: Annotated[Literal["front", "back", "left", "right"] | None,
+                        _d("Edge that gets the flight of steps, in the platform's own frame: 'front' is "
+                           "the edge through (x, y) along `rotation`, 'back' the opposite edge, 'left' the "
+                           "edge through (x, y) across, 'right' the opposite. Omitted: decks only.")] = None,
+    step_count: Annotated[int | None, _d("Number of steps in the flight. Omitted: about one per 8 inches of height.")] = None,
+    tread_width: Annotated[float | None, _d(f"Width of the flight in {_UNITS}. Omitted: the plug-in default.")] = None,
+    step_kind: Annotated[Literal["Self-Adjusting", "Frame Free-Standing", "Solid Free-Standing", "Open Free-Standing", "Simple"],
+                         _d(_STEP_KIND)] = "Self-Adjusting",
+    rails: Annotated[bool, _d("True adds a handrail on both sides of the steps.")] = False,
+    structure: Annotated[Literal["Legs-Basic", "Legs-Braced", "Folding", "Deck Only", "Border", "Simple"],
+                         _d(_STRUCTURE)] = "Legs-Basic",
+    purpose: Annotated[str | None, _d(_PURPOSE + " Applied to decks and steps.")] = None,
+    position: Annotated[str | None, _d(_POSITION + " Applied to decks and steps.")] = None,
+    layer: Annotated[str | None, _d(_LAYER)] = None,
+    class_name: Annotated[str | None, _d(_CLASS)] = None,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
 ) -> dict:
-    """A platform with its steps in one call: `columns` x `rows` Stage Decks of
-    `width` x `depth` at `height` from corner (x, y) (as vw_insert_stage_decks),
-    plus one flight of Stage Steps centred on the chosen edge, descending away
-    from the platform. Edges are in the platform's own frame: "front" is the
-    edge through (x, y) along `rotation`, "back" opposite, "left" the edge
-    through (x, y) across, "right" opposite. `step_count` defaults to about one
-    per 8 inches; `rails` puts a rail on both sides; `step_kind` "Simple" gives
-    a compact flight. All document units. Everything is one revertible step;
-    the result has each deck's and the flight's 3D centre and size.
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+    """Build a platform of Stage Decks together with one flight of Stage Steps on a chosen edge, as one revertible step.
+    The decks are laid out exactly as vw_insert_stage_decks does; the flight
+    is centred on the `steps_on` edge and descends away from the platform. Use
+    vw_insert_stage_decks or vw_insert_stage_steps alone when only one part is
+    wanted. All document units. One vw_revert_last removes decks and steps
+    together. Returns {decks: [{uuid, center, size}], footprint, steps: {uuid,
+    steps, center, size}?, class?} with geometry read back after creation."""
     app.require_document(document)
     if columns < 1 or rows < 1:
         raise ToolError("columns and rows must be at least 1")
@@ -480,22 +589,22 @@ def vw_insert_platform(
 
 @mcp.tool(annotations=WRITE)
 def vw_insert_band(
-    members: list[dict[str, Any]],
-    layer: str | None = None,
-    class_name: str | None = None,
-    label: bool = True,
-    label_offset_mm: float = 500,
-    document: str | None = None,
+    members: Annotated[list[dict[str, Any]], _d("One entry per person or instrument: {'symbol': name of a "
+                                                 "symbol in the document, 'x': ..., 'y': ... (document units), "
+                                                 "optional 'z', 'rotation' in degrees (default 0) and 'name' "
+                                                 "for the label (default: the symbol name)}. At least one.")],
+    layer: Annotated[str | None, _d(_LAYER)] = None,
+    class_name: Annotated[str | None, _d(_CLASS + " Applied to symbols and labels.")] = None,
+    label: Annotated[bool, _d("True adds a centred text label with each member's name below the symbol.")] = True,
+    label_offset_mm: Annotated[float, _d("Distance in millimetres from the symbol's insertion point down to the label.")] = 500,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
 ) -> dict:
-    """Place a band or crew on stage: `members` = [{"symbol": "Drummer", "x": 0,
-    "y": 0, "rotation": 0, "name": "Drums"}, ...] puts each symbol (a people
-    or backline symbol already in the document: vw_list_symbols, or import one
-    with vw_list_library_resources / vw_import_resource) at x, y (document
-    units, optional z) and, with label=True, a centred text with the name
-    `label_offset_mm` below it. `name` defaults to the symbol name. All or
-    nothing; one revertible step; `class_name` applies to symbols and labels.
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+    """Place a band or crew on stage: people or backline symbols at given points, each with a name label.
+    The symbols must already be in the document (vw_list_symbols); bring them
+    in first with vw_list_library_resources and vw_import_resource. For a
+    single symbol without a label use vw_insert_symbol. All-or-nothing; one
+    revertible step removes symbols and labels together. Returns {members:
+    [{uuid, label_uuid, ...}], class?}."""
     if not members:
         raise ToolError("members: give at least one {symbol, x, y}")
     clean = []
@@ -514,35 +623,38 @@ def vw_insert_band(
     return out
 
 
+_EDGE_X = (f"x of the top centre of the flight on the stage edge, in {_UNITS}.")
+_EDGE_Y = (f"y of the top centre of the flight on the stage edge, in {_UNITS}.")
+_EDGE_ROT = ("Direction in degrees. At 0 the stage is on the +y side and the object descends toward -y; "
+             "rotate with the platform, for example 90 for a platform that extends toward -x.")
+
+
 @mcp.tool(annotations=WRITE)
 def vw_insert_stage_ramp(
-    x: float,
-    y: float,
-    stage_height: float,
-    rotation: float = 0.0,
-    tread_width: float | None = None,
-    ramp_length: float | None = None,
-    pitch_angle: float | None = None,
-    kind: Literal["Legs", "Solid", "Simple"] = "Legs",
-    rail_left: bool = False,
-    rail_right: bool = False,
-    arrow: bool = False,
-    purpose: str | None = None,
-    position: str | None = None,
-    layer: str | None = None,
-    class_name: str | None = None,
-    document: str | None = None,
+    x: Annotated[float, _d(_EDGE_X.replace("flight", "ramp"))],
+    y: Annotated[float, _d(_EDGE_Y.replace("flight", "ramp"))],
+    stage_height: Annotated[float, _d(f"Height of the stage edge the ramp descends from, in {_UNITS}.")],
+    rotation: Annotated[float, _d(_EDGE_ROT)] = 0.0,
+    tread_width: Annotated[float | None, _d(f"Width of the ramp in {_UNITS}. Omitted: the plug-in default.")] = None,
+    ramp_length: Annotated[float | None, _d(f"Length of the ramp measured along the slope, in {_UNITS}. "
+                                            "Give this or pitch_angle; omitted with no angle: the plug-in default.")] = None,
+    pitch_angle: Annotated[float | None, _d("Slope of the ramp in degrees, as an alternative to ramp_length.")] = None,
+    kind: Annotated[Literal["Legs", "Solid", "Simple"], _d("Ramp construction: 'Legs', 'Solid' or 'Simple'.")] = "Legs",
+    rail_left: Annotated[bool, _d("True adds a handrail on the left side (seen going down).")] = False,
+    rail_right: Annotated[bool, _d("True adds a handrail on the right side.")] = False,
+    arrow: Annotated[bool, _d("True draws the plug-in's 'down' arrow in plan view.")] = False,
+    purpose: Annotated[str | None, _d(_PURPOSE)] = None,
+    position: Annotated[str | None, _d(_POSITION)] = None,
+    layer: Annotated[str | None, _d(_LAYER)] = None,
+    class_name: Annotated[str | None, _d(_CLASS)] = None,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
 ) -> dict:
-    """A Spotlight Stage Ramp down from a stage edge. (x, y) is the top
-    centre of the ramp on the edge; at `rotation` 0 the stage is on the +y
-    side and the ramp descends toward -y (same convention as
-    vw_insert_stage_steps). Give either `ramp_length` (measured along the
-    slope) or `pitch_angle` in degrees; `stage_height`, `tread_width` and
-    `ramp_length` are document units. `arrow` draws the plug-in's "down"
-    arrow in plan. Returns the ramp's 3D centre and size (its plan length is
-    size[1] at rotation 0). One vw_revert_last removes it.
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+    """Place a Spotlight Stage Ramp descending from a stage edge.
+    Same placement convention as vw_insert_stage_steps: (x, y) is the top
+    centre on the edge, the ramp runs away from the stage along `rotation`.
+    One revertible step; the geometry is read back after creation. Returns
+    {uuid, center: [x, y, z], size: [w, l, h], class?} (the plan length is
+    size[1] at rotation 0)."""
     app.require_document(document)
     out = vw("insert_stage_ramp", x=x, y=y, stage_height=stage_height, rotation=rotation,
              tread_width=tread_width, ramp_length=ramp_length, pitch_angle=pitch_angle, kind=kind,
@@ -558,29 +670,28 @@ def vw_insert_stage_ramp(
 
 @mcp.tool(annotations=WRITE)
 def vw_insert_soft_goods(
-    points: list[list[float]],
-    height: float,
-    function: Literal["Curtain", "Truss Border", "Pipe-and-Drape"] = "Curtain",
-    opening_width: float | None = None,
-    open_from: str | None = None,
-    traveler: bool = False,
-    add_pipe: bool = False,
-    add_track: bool = False,
-    purpose: str | None = None,
-    position: str | None = None,
-    layer: str | None = None,
-    class_name: str | None = None,
-    document: str | None = None,
+    points: Annotated[list[list[float]], _d(f"Path of the run as [[x, y], [x, y], ...] in {_UNITS}; at least "
+                                            "two points, an open polyline.")],
+    height: Annotated[float, _d(f"Height of the curtain or border in {_UNITS}.")],
+    function: Annotated[Literal["Curtain", "Truss Border", "Pipe-and-Drape"],
+                        _d("What the run is: 'Curtain', 'Truss Border' or 'Pipe-and-Drape'.")] = "Curtain",
+    opening_width: Annotated[float | None, _d(f"Curtains only: width of the opening in {_UNITS}. Omitted: no opening.")] = None,
+    open_from: Annotated[str | None, _d("Curtains only: where the opening is, as the plug-in's popup text, "
+                                        "for example 'Center'. Omitted: the plug-in default.")] = None,
+    traveler: Annotated[bool, _d("True marks the curtain as a traveler.")] = False,
+    add_pipe: Annotated[bool, _d("True draws the hanging pipe.")] = False,
+    add_track: Annotated[bool, _d("True draws the curtain track.")] = False,
+    purpose: Annotated[str | None, _d(_PURPOSE)] = None,
+    position: Annotated[str | None, _d(_POSITION)] = None,
+    layer: Annotated[str | None, _d(_LAYER)] = None,
+    class_name: Annotated[str | None, _d(_CLASS)] = None,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
 ) -> dict:
-    """A Spotlight Soft Goods run (curtain, truss border or pipe-and-drape)
-    along the open polyline through `points` ([[x, y], ...], at least two,
-    document units), `height` tall (document units). A curtain can have an
-    opening: `opening_width` and `open_from` (the plug-in's popup text, e.g.
-    "Center"); `traveler` marks it as a traveler; `add_pipe` / `add_track`
-    draw the hanging hardware. Returns the object's 3D centre and size plus
-    the path length. One vw_revert_last removes it (the path goes with it).
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+    """Place a Spotlight Soft Goods run (curtain, truss border or pipe-and-drape) along a path of points.
+    Creates one Soft Goods object on the open polyline through `points`,
+    `height` tall, with the optional opening and hardware. One revertible step
+    removes it with its path. The geometry is read back after creation.
+    Returns {uuid, center: [x, y, z], size: [w, d, h], path_length, class?}."""
     app.require_document(document)
     out = vw("insert_soft_goods", points=points, height=height, function=function,
              opening_width=opening_width, open_from=open_from, traveler=traveler,
@@ -595,34 +706,32 @@ def vw_insert_soft_goods(
 
 @mcp.tool(annotations=WRITE)
 def vw_insert_stage_steps(
-    x: float,
-    y: float,
-    stage_height: float,
-    rotation: float = 0.0,
-    tread_width: float | None = None,
-    steps: int | None = None,
-    kind: Literal["Self-Adjusting", "Frame Free-Standing", "Solid Free-Standing", "Open Free-Standing", "Simple"] = "Self-Adjusting",
-    rail_left: bool = False,
-    rail_right: bool = False,
-    stringer_length: float | None = None,
-    purpose: str | None = None,
-    position: str | None = None,
-    layer: str | None = None,
-    class_name: str | None = None,
-    document: str | None = None,
+    x: Annotated[float, _d(_EDGE_X)],
+    y: Annotated[float, _d(_EDGE_Y)],
+    stage_height: Annotated[float, _d(f"Height of the stage edge the steps descend from, in {_UNITS}.")],
+    rotation: Annotated[float, _d(_EDGE_ROT)] = 0.0,
+    tread_width: Annotated[float | None, _d(f"Width of the flight in {_UNITS}. Omitted: the plug-in default.")] = None,
+    steps: Annotated[int | None, _d("Number of steps. Omitted: about one per 8 inches of stage height.")] = None,
+    kind: Annotated[Literal["Self-Adjusting", "Frame Free-Standing", "Solid Free-Standing", "Open Free-Standing", "Simple"],
+                    _d(_STEP_KIND)] = "Self-Adjusting",
+    rail_left: Annotated[bool, _d("True adds a handrail on the left side (seen going down).")] = False,
+    rail_right: Annotated[bool, _d("True adds a handrail on the right side.")] = False,
+    stringer_length: Annotated[float | None, _d(f"'Self-Adjusting' only: stringer length in {_UNITS}. "
+                                                "Omitted: 6 ft, so a low flight lies at a shallow pitch.")] = None,
+    purpose: Annotated[str | None, _d(_PURPOSE)] = None,
+    position: Annotated[str | None, _d(_POSITION)] = None,
+    layer: Annotated[str | None, _d(_LAYER)] = None,
+    class_name: Annotated[str | None, _d(_CLASS)] = None,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
 ) -> dict:
-    """A flight of Spotlight Stage Steps down from a stage edge. (x, y) is the
-    top centre of the flight on the edge; at `rotation` 0 the stage is on
-    the +y side and the steps descend toward -y (rotate with the platform,
-    e.g. 90 for a platform that extends -x). `stage_height`, `tread_width`
-    and `stringer_length` are document units; `steps` defaults to about one
-    per 8 inches of height. The default "Self-Adjusting" kind is a rental
-    unit with a fixed stringer (6 ft unless `stringer_length` is given), so a
-    low flight lies at a shallow pitch; use kind "Simple" for a compact
-    flight. Returns the flight's 3D centre and size. One vw_revert_last
-    removes it.
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+    """Place a flight of Spotlight Stage Steps descending from a stage edge.
+    (x, y) is the top centre of the flight on the edge and the flight runs
+    away from the stage along `rotation`. For decks and steps in one call use
+    vw_insert_platform; for a ramp vw_insert_stage_ramp. The default
+    'Self-Adjusting' kind is a rental unit with a fixed stringer, so a low
+    flight lies at a shallow pitch; 'Simple' gives a compact flight. One
+    revertible step; the geometry is read back after creation. Returns
+    {uuid, steps, center: [x, y, z], size: [w, l, h], class?}."""
     app.require_document(document)
     out = vw("insert_stage_steps", x=x, y=y, stage_height=stage_height, rotation=rotation,
              tread_width=tread_width, steps=steps, kind=kind, rail_left=rail_left,

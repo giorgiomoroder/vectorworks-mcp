@@ -4,17 +4,23 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.mcpserver.utilities.types import Image
 from mcp.types import TextContent
+from pydantic import Field
 
 from vwmcp import app, calls, config, documents, render, screenshot, viewmap, vslint
 from vwmcp.app import READ, WRITE, mcp, vw
 from vwmcp.client import BridgeError
 from vwmcp.journal import JournalError
 from vwmcp.trigger import DEFAULT_APP
+
+# Shared description of the `document` guard parameter of every write tool.
+DOC = ('Name of the document this must run in, as vw_list_documents shows it (".vwx" may be '
+       'left out) or its full path. If another document is active, nothing changes. Omit to '
+       'act on whatever document is active.')
 
 PING_CODE = """
 v = vs.GetVersionEx()
@@ -48,8 +54,14 @@ def _run_raw(code: str, timeout: float | None = None, allow_dialogs: bool = Fals
 
 @mcp.tool(annotations=READ)
 def vw_ping() -> dict:
-    """Check the Vectorworks bridge: returns Vectorworks version, active document
-    and bridge version. Warns if the installed bridge doesn't match this server."""
+    """Check that Vectorworks answers: one tiny job through the bridge.
+
+    Read-only. Returns {vectorworks_version, build, document (the active one),
+    bridge_version, documents (all open ones), warning?}. The warning says when
+    the installed bridge is older than this server expects or when this
+    Vectorworks version is untested. Call it once at session start, after
+    vw_list_documents. If it fails or times out, call vw_doctor (which never
+    touches Vectorworks) and vw_screenshot (to see a blocking dialog)."""
     res = _run_raw(PING_CODE)
     if not res["ok"]:
         raise ToolError(res["error"])
@@ -82,17 +94,23 @@ def vw_ping() -> dict:
 
 
 @mcp.tool(annotations=WRITE)
-def vw_doctor(fix: bool = False) -> dict:
-    """Check this Vectorworks MCP setup without touching Vectorworks: bridge
-    installed in the right Plug-ins folder and up to date, the 'MCP Run Job'
-    command file present, Claude Desktop / Claude Code configured for this
-    version, Vectorworks running, stale job files, recent log errors. Each check
-    is ok / not ok / None (could not check here) with a fix line. With fix=True
-    it also removes stale job files and, when the bridge is missing or outdated,
-    installs it into the user's Vectorworks Plug-ins folder (the only file it
-    writes outside the server's own folder) and reports the one manual step
-    left (dragging 'MCP Run Job' into a menu). Then restart Vectorworks and
-    call vw_ping. Use this first when vw_ping fails."""
+def vw_doctor(
+    fix: Annotated[bool, Field(description=(
+        "False (default): only report. True: also remove stale job and result files and, when "
+        "the bridge is missing or outdated, install it into the user's Vectorworks Plug-ins "
+        "folder (the only file written outside this server's own folder); Vectorworks must "
+        "then be restarted once."))] = False,
+) -> dict:
+    """Check this Vectorworks MCP setup on this Mac without touching Vectorworks.
+
+    Checks: bridge installed in the right Plug-ins folder and up to date (with
+    its check tables), the 'MCP Run Job' command file present, Claude Desktop /
+    Claude Code configured for this Vectorworks version, Vectorworks running,
+    stale job files, recent log errors. Returns {ok, checks: [{name, ok
+    (true / false / null = could not check here), detail, fix}], next_step,
+    installed?}. Use it first when vw_ping fails; vw_ping is the live test
+    that this one deliberately does not do. Not checked here: whether 'MCP Run
+    Job' is in a menu and the macOS Automation permission."""
     from vwmcp import doctor, install
 
     root = app.get_bridge().root
@@ -120,37 +138,44 @@ def vw_doctor(fix: bool = False) -> dict:
 
 @mcp.tool(annotations=WRITE)
 def vw_exec_python(
-    code: str, modifies_document: bool = True, timeout: float | None = None,
-    document: str | None = None, lint: bool = True, allow_dialogs: bool = False,
+    code: Annotated[str, Field(description=(
+        "Python source to run inside Vectorworks with `vs` in scope. Python 3.9 syntax "
+        "(Vectorworks 2026 embeds 3.9; no match statements, no `X | Y` types). Its stdout, "
+        "the value of the last expression or of a variable named `result`, and any "
+        "traceback are returned. Handles are only valid during the call: return UUIDs "
+        "(vs.GetObjectUuid) to refer to objects later."))],
+    modifies_document: Annotated[bool, Field(description=(
+        "True (default): the objects the code creates are recorded so vw_revert_last can "
+        "delete exactly those, even if the code fails halfway. False: run as read-only code "
+        "(faster, no journal entry); use it for anything that only reads."))] = True,
+    timeout: Annotated[float | None, Field(description=(
+        "Seconds to wait for the result once Vectorworks has taken the job. Default 120; "
+        "raise it for scripts that create many objects."))] = None,
+    document: Annotated[str | None, Field(description=DOC)] = None,
+    lint: Annotated[bool, Field(description=(
+        "True (default): check the code before sending it (same as vw_lint). Syntax errors, "
+        "vs.* calls with a wrong argument count, deprecated calls and functions known to crash "
+        "Vectorworks or open a dialog stop the call with a report; unknown vs.* names come back "
+        "as lint_warnings. False skips the check; only when the check itself is wrong."))] = True,
+    allow_dialogs: Annotated[bool, Field(description=(
+        "False (default): vs.* functions that open a dialog are refused, because an open dialog "
+        "blocks every further job until the user closes it. True: allow them on purpose."))] = False,
 ) -> dict:
-    """Run arbitrary Python inside Vectorworks with `vs` in scope.
+    """Run arbitrary Python inside Vectorworks; the last resort when no typed tool fits.
 
-    Returns stdout, the value of the last expression (or of a variable named
-    `result`), and the traceback if it raised. Vectorworks embeds Python 3.9
-    (2026) or 3.14 (2027); stay 3.9-compatible to be safe. Handles are only
-    valid during the call; return UUIDs (vs.GetObjectUuid) to refer to
-    objects later. Inside Vectorworks every vs.* call is checked first
-    (argument count and types, known crashers): a bad call raises
-    VSArgumentError / VSUnsafeError in the result instead of opening the
-    modal "Script Errors" dialog. Check signatures with vw_vs_lookup.
+    Prefer the typed vw_* tools (they verify and revert precisely); use
+    vw_exec_file for a script that already lives in a file and vw_lint to
+    check code without running it. The code is linted first, then every vs.*
+    call is checked inside Vectorworks (argument count and types, known
+    crashers): a bad call comes back as VSArgumentError / VSUnsafeError in
+    the result instead of opening the modal "Script Errors" window. Look up
+    signatures with vw_vs_lookup.
 
-    With modifies_document=True (default) the objects the code creates are
-    recorded, even if it fails halfway, and vw_revert_last deletes exactly
-    those. Changes to objects that existed before (moves, attributes,
-    deletions) are not revertible. Set modifies_document=False for read-only
-    code (faster, no journal entry). timeout: seconds to wait for the result
-    once Vectorworks took the job (default 120); raise it for large scripts.
-
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first).
-    lint (default True): the code is checked before it is sent (vw_lint).
-    Syntax errors, vs.* calls with a wrong number of arguments, deprecated
-    calls and functions known to crash Vectorworks or open a dialog stop the
-    call with a report; unknown vs.* names come back as `lint_warnings`.
-    lint=False skips the check (only if the check is wrong).
-    allow_dialogs: let the code call vs.* functions that open a dialog (they
-    block all further jobs until the user closes it); refused by default.
-    """
+    Changes the document when the code does. Objects the code creates are
+    revertible with vw_revert_last; changes to objects that existed before
+    (moves, attributes, deletions) are not, and such a call blocks stepping
+    further back. Returns {ok, value, stdout, error, traceback, created,
+    revertable, warning?, lint_warnings?}."""
     app.require_document(document)
     lint_warnings = _preflight(code, "<vw_exec_python>", allow_dialogs) if lint else []
     out = _exec_python(code, modifies_document, timeout, allow_dialogs)
@@ -208,16 +233,31 @@ def _exec_python(code: str, modifies_document: bool, timeout: float | None,
 
 @mcp.tool(annotations=WRITE)
 def vw_exec_file(
-    path: str, modifies_document: bool = True, timeout: float | None = 120,
-    document: str | None = None, lint: bool = True, allow_dialogs: bool = False,
+    path: Annotated[str, Field(description=(
+        "Path of a Python script file on this Mac (\"~\" is expanded), for example in the "
+        "project's _claude_scripts folder. Its contents run exactly like code given to "
+        "vw_exec_python: Python 3.9 syntax, `vs` in scope."))],
+    modifies_document: Annotated[bool, Field(description=(
+        "True (default): objects the script creates are recorded so vw_revert_last can delete "
+        "them. False: run as read-only code (faster, no journal entry)."))] = True,
+    timeout: Annotated[float | None, Field(description=(
+        "Seconds to wait for the result once Vectorworks has taken the job; default 120 "
+        "because script files tend to be large."))] = 120,
+    document: Annotated[str | None, Field(description=DOC)] = None,
+    lint: Annotated[bool, Field(description=(
+        "True (default): lint the file before sending it (see vw_lint); errors stop the call "
+        "with a report. False skips the check."))] = True,
+    allow_dialogs: Annotated[bool, Field(description=(
+        "False (default): vs.* functions that open a dialog are refused (an open dialog blocks "
+        "every further job). True: allow them on purpose."))] = False,
 ) -> dict:
-    """Run a Python script file (a path on this Mac, e.g. in the project's
-    _claude_scripts folder) inside Vectorworks, exactly like vw_exec_python
-    with its contents: created objects are revertible, the file is linted
-    first. Default timeout 120 s for large scripts.
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first).
-    allow_dialogs: as in vw_exec_python."""
+    """Run a Python script file from this Mac inside Vectorworks, like vw_exec_python with its contents.
+
+    Use it instead of vw_exec_python when the code is long or kept in the
+    project; use vw_lint to only check it. Changes the document when the
+    script does; created objects are revertible with vw_revert_last, edits to
+    pre-existing objects are not. Returns {ok, value, stdout, error,
+    traceback, created, revertable, warning?, lint_warnings?}."""
     app.require_document(document)
     p = Path(path).expanduser()
     try:
@@ -232,12 +272,23 @@ def vw_exec_file(
 
 
 @mcp.tool(annotations=READ)
-def vw_lint(code: str | None = None, path: str | None = None) -> dict:
-    """Check Python for Vectorworks without running it: syntax errors, vs.*
-    calls with a wrong number of arguments, deprecated calls (these would open
-    the blocking "Script Errors" dialog) and unknown vs.* names. Pass code or
-    the path of a script file (e.g. a menu command script). Works without
-    Vectorworks. Argument types are not checked."""
+def vw_lint(
+    code: Annotated[str | None, Field(description=(
+        "Python source to check. Pass either code or path, not both."))] = None,
+    path: Annotated[str | None, Field(description=(
+        "Path of a Python script file on this Mac to check instead of code, for example a menu "
+        "command script. Pass either code or path, not both."))] = None,
+) -> dict:
+    """Check Python meant for Vectorworks without running it.
+
+    Finds syntax errors, vs.* calls with a wrong number of arguments,
+    deprecated calls (these would open the blocking "Script Errors" window)
+    and functions a published safety sweep found to crash or hang Vectorworks
+    or to open a dialog; unknown vs.* names are warnings. Works without
+    Vectorworks running. Argument types and values are not checked here (the
+    bridge checks types when the code runs). vw_exec_python and vw_exec_file
+    run this check themselves, so call it directly only to check a script you
+    do not intend to run yet. Returns {ok, errors, warnings, api}."""
     if (code is None) == (path is None):
         raise ToolError("Pass either code or path.")
     name = "<code>"
@@ -265,9 +316,14 @@ def _remember_active() -> None:
 
 @mcp.tool(annotations=READ)
 def vw_list_documents() -> dict:
-    """Open Vectorworks documents (front to back; `active` is the one all
-    other tools work on) and the known file paths. Uses AppleScript from
-    outside Vectorworks, no Accessibility permission needed."""
+    """List the documents open in Vectorworks, front to back, and which one is active.
+
+    Read-only; asks macOS from outside Vectorworks (no job, no Accessibility
+    permission). Returns {documents: [names], active, paths: {name: path}}
+    for the paths this server has learned. Every other tool works on the
+    active document, so call this at session start and before writes; switch
+    with vw_switch_document. Fails with "No document is open" when only the
+    start screen shows."""
     _remember_active()
     try:
         return documents.list_documents()
@@ -276,12 +332,18 @@ def vw_list_documents() -> dict:
 
 
 @mcp.tool(annotations=WRITE)
-def vw_switch_document(name: str) -> dict:
-    """Bring an open, saved document to the front: `name` as vw_list_documents
-    shows it (".vwx" may be left out) or its full path. Verified afterwards.
-    Unsaved documents can't be switched to; doesn't open closed files. All
-    other tools act on the active document, so check vw_document_info before
-    writing."""
+def vw_switch_document(
+    name: Annotated[str, Field(description=(
+        "The document to bring to the front: its name as vw_list_documents shows it (\".vwx\" "
+        "may be left out) or its full path. It must already be open and saved; unsaved "
+        "documents cannot be switched to and closed files are not opened."))],
+) -> dict:
+    """Bring one of the open, saved Vectorworks documents to the front.
+
+    Changes only which document is active (no drawing change); verified
+    afterwards by reading the front window's name. All other tools act on the
+    active document, so use this before writing when vw_list_documents shows
+    the wrong one in front. Returns {active, switched, documents}."""
     _remember_active()
     try:
         out = documents.switch_document(name)
@@ -293,29 +355,36 @@ def vw_switch_document(name: str) -> dict:
 
 @mcp.tool(annotations=READ)
 def vw_export_geometry(
-    layer: str | None = None,
-    classes: list[str] | None = None,
-    out_path: str | None = None,
-    limit: int = 20000,
-    timeout: float | None = 60,
-    attributes: bool = True,
+    layer: Annotated[str | None, Field(description=(
+        "Name of the design layer to read. Default: the active layer."))] = None,
+    classes: Annotated[list[str] | None, Field(description=(
+        "Only objects in these classes (exact names). Default: every class."))] = None,
+    out_path: Annotated[str | None, Field(description=(
+        "File path on this Mac (\"~\" is expanded). When given, the full JSON is written there "
+        "and only a summary comes back; use it for large layers to keep the conversation "
+        "small. Default: the geometry is returned inline."))] = None,
+    limit: Annotated[int, Field(description=(
+        "Maximum number of objects to export; the result says `truncated` when the layer has "
+        "more. Default 20000."))] = 20000,
+    timeout: Annotated[float | None, Field(description=(
+        "Seconds to wait for Vectorworks once it has taken the job. Default 60."))] = 60,
+    attributes: Annotated[bool, Field(description=(
+        "True (default): each object also carries `attrs` with its fill (pattern 0 none / 1 "
+        "solid background colour / 2 solid foreground colour, colours as #rrggbb), its pen "
+        "(colour, weight in mils, style) and whether each follows the class (`by_class`). "
+        "False: geometry only."))] = True,
 ) -> dict:
-    """Read back the 2D geometry of one layer (default: active layer), in
-    document units: lines and polygons as points, arcs as center/radius/
-    angles, texts with origin and string, dimensions with their text.
-    Descends into groups; plug-in objects (chain dimensions, doors) are one
-    entry each. Use it to verify what is really in the file, e.g. to render
-    it over a scan. Optionally filter by exact class names.
+    """Read the 2D geometry of one design layer as numbers, in document units.
 
-    attributes (default on): every object also gets "attrs" with its fill
-    (pattern 0 none / 1 solid background color / 2 solid foreground color,
-    colors as #rrggbb) and pen (color, weight in mils, style) and whether
-    each follows the class ("by_class"). Compare these with neighboring
-    objects before drawing new ones in the same style.
-
-    With out_path (a file path on this Mac, e.g. in the project folder) the
-    full JSON is written there and only a summary is returned; use that for
-    large layers to keep the conversation small."""
+    Read-only. Lines and polygons come as points, arcs as centre / radius /
+    angles, texts with origin and string, dimensions with their text; groups
+    are descended, plug-in objects (chain dimensions, doors) are one entry
+    each. Use it to verify what is really in the file, or to compare fill and
+    pen attributes with neighbouring objects before drawing in the same
+    style; vw_render_layers draws the same data as a picture, vw_screenshot
+    shows the real window instead. Returns {document, layer, objects: [{type,
+    class, uuid, points | origin | center, attrs?...}], truncated}, or with
+    out_path {path, count, by_type, by_class, extent}."""
     try:
         res = calls.call_result(
             app.get_bridge(), "export_geometry", timeout=timeout,
@@ -359,26 +428,34 @@ def geometry_summary(data: dict) -> dict:
 
 @mcp.tool(annotations=READ)
 def vw_render_layers(
-    layers: list[str] | None = None,
-    bbox: list[float] | None = None,
-    classes: list[str] | None = None,
-    max_size: int = 1600,
-    fills: bool = True,
-    out_path: str | None = None,
-    timeout: float | None = 60,
+    layers: Annotated[list[str] | None, Field(description=(
+        "Design layer names, drawn in this order (later ones on top). Default: the active "
+        "layer only."))] = None,
+    bbox: Annotated[list[float] | None, Field(description=(
+        "[x_min, y_min, x_max, y_max] in document units to zoom in on. Default: everything "
+        "on the chosen layers."))] = None,
+    classes: Annotated[list[str] | None, Field(description=(
+        "Only objects in these classes (exact names). Default: every class."))] = None,
+    max_size: Annotated[int, Field(description=(
+        "Length of the image's long side in pixels. Default 1600."))] = 1600,
+    fills: Annotated[bool, Field(description=(
+        "True (default): paint solid fills (always below all lines). False: outlines only."))] = True,
+    out_path: Annotated[str | None, Field(description=(
+        "File path on this Mac to also save the PNG to (\"~\" is expanded). Default: the image "
+        "is only returned."))] = None,
+    timeout: Annotated[float | None, Field(description=(
+        "Seconds to wait for Vectorworks per layer once it has taken the job. Default 60."))] = 60,
 ) -> Image:
-    """Picture of design layers drawn from their real geometry, independent
-    of what the Vectorworks window shows (no Screen Recording needed). Use
-    it to check drawing work on any layer, visible or not.
+    """Draw design layers as a PNG from their real geometry, whatever the Vectorworks window shows.
 
-    layers: layer names, drawn in this order (default: the active layer).
-    bbox: [x_min, y_min, x_max, y_max] in document units to zoom in
-    (default: everything). max_size: long side in px. out_path: also save
-    the PNG there. It is a check picture, not a plot: object colors, solid
-    fills and line weights are shown; hatches, dash styles, opacity and
-    curved polyline segments are not, texts are only marked with a small
-    cross at their origin, and symbols / plug-in objects are gray boxes.
-    All fills are painted below all lines."""
+    Read-only; one geometry job per layer, no Screen Recording needed. Use it
+    to check drawing work on any layer, visible or hidden; vw_screenshot shows
+    the real window instead (and any blocking dialog), vw_export_geometry
+    returns the same data as numbers. It is a check picture, not a plot:
+    object colours, solid fills and line weights are shown; hatches, dash
+    styles, opacity and curved polyline segments are not, texts are marked
+    with a small cross at their origin, and symbols / plug-in objects are
+    grey boxes. Returns the image."""
     exported = []
     for name in layers or [None]:
         try:
@@ -404,22 +481,26 @@ def vw_render_layers(
 
 @mcp.tool(annotations=WRITE)
 def vw_duplicate_layer(
-    source: str,
-    name: str,
-    visibility: str | None = None,
-    uuid_map: bool = False,
-    document: str | None = None,
+    source: Annotated[str, Field(description="Name of the existing design layer to copy.")],
+    name: Annotated[str, Field(description="Name for the new layer; must not exist yet.")],
+    visibility: Annotated[str | None, Field(description=(
+        "Visibility of the copy: \"visible\", \"hidden\" or \"gray\". Default: the same as the "
+        "source has now. Layers share coordinates, so a visible copy lies exactly on top of "
+        "the original."))] = None,
+    uuid_map: Annotated[bool, Field(description=(
+        "True: also return `uuid_map` {source object uuid: copy uuid}, including objects "
+        "inside groups. Default False."))] = False,
+    document: Annotated[str | None, Field(description=DOC)] = None,
 ) -> dict:
-    """Copy a design layer with all its objects, e.g. to try a variant
-    without touching the original. The copy keeps the scale, is placed
-    right after the source in the layer list, and the active layer stays
-    active. visibility: "visible", "hidden" or "gray"; default: the same as
-    the source has now (layers share coordinates, so a visible copy lies
-    exactly on top of the original). uuid_map=True also returns
-    {source object uuid: copy uuid}, including objects inside groups.
-    Revertible with vw_revert_last (deletes the copy).
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+    """Copy a design layer with all its objects, to try a variant without touching the original.
+
+    Changes the document: one new layer, one revertible step (vw_revert_last
+    deletes the copy). The copy keeps the scale and is placed right after the
+    source in the layer list; the active layer stays active. Use
+    vw_create_layer for an empty layer. Returns {document, layer, source,
+    objects, source_objects, after_source, scale, visibility, uuid_map when
+    asked for}; objects below source_objects means not every object was
+    copied."""
     app.require_document(document)
     out = vw("duplicate_layer", source=source, name=name, visibility=visibility, uuid_map=uuid_map)
     app.get_journal().record(out.pop("document"), "vw_duplicate_layer",
@@ -435,22 +516,28 @@ def vw_duplicate_layer(
 
 @mcp.tool(annotations=WRITE)
 def vw_set_vertices(
-    uuid: str,
-    points: list[list[float]],
-    vertex_types: list[int] | None = None,
-    arc_radii: list[float] | None = None,
-    document: str | None = None,
+    uuid: Annotated[str, Field(description=(
+        "UUID of the polygon or polyline (from vw_find_objects, vw_get_selection or "
+        "vw_export_geometry)."))],
+    points: Annotated[list[list[float]], Field(description=(
+        "The complete new vertex list, [[x, y], ...] in document units; vertices are added "
+        "or removed to match its length."))],
+    vertex_types: Annotated[list[int] | None, Field(description=(
+        "Polylines only: one type per point, 0 corner, 1 bezier, 2 cubic, 3 arc, 4 radius. "
+        "Default: all corners. Ignored for polygons."))] = None,
+    arc_radii: Annotated[list[float] | None, Field(description=(
+        "Polylines only: one radius per point in document units, used for type 4 (radius) "
+        "vertices. Default: none."))] = None,
+    document: Annotated[str | None, Field(description=DOC)] = None,
 ) -> dict:
-    """Replace all vertices of a polygon or polyline with `points`
-    ([[x, y], ...] in document units), adding or removing vertices as
-    needed. Works the same for both object types (the plain vs.SetPolyPt
-    silently does nothing on polylines). vertex_types / arc_radii (one per
-    point; 0 corner, 1 bezier, 2 cubic, 3 arc, 4 radius) only for
-    polylines; default all corners. Returns the points read back, the area
-    before and after, and "applied": false with a warning if Vectorworks
-    did not take every point. Revertible with vw_revert_last.
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+    """Replace every vertex of one polygon or polyline with a new point list.
+
+    Changes the document; one revertible step (vw_revert_last restores the
+    previous vertices). Works the same for both object types (the plain
+    vs.SetPolyPt silently does nothing on polylines). Use vw_move_objects to
+    shift a shape unchanged. Returns {points (read back), area_before,
+    area_after, applied, warning?}; applied is false when Vectorworks did
+    not take every point."""
     app.require_document(document)
     out = vw("set_vertices", uuid=uuid, points=points, vertex_types=vertex_types, arc_radii=arc_radii)
     app.get_journal().record(out.pop("document"), "vw_set_vertices",
@@ -461,13 +548,22 @@ def vw_set_vertices(
 
 
 @mcp.tool(annotations=READ)
-def vw_vs_lookup(query: str, limit: int = 25) -> list[dict]:
-    """Search the live vs.* API (names and built-in docs) of the running
-    Vectorworks, e.g. "record field", "symbol insert", "LDevice". Returns
-    function names with their signature/description, the parameter types
-    the bridge checks (`types`: "name:TYPE, ..." and codes) and `safety`
-    (None, or "crash" / "hang" / "interactive" / "document_level" from the
-    safety sweep: crash and hang are refused, interactive needs allow_dialogs)."""
+def vw_vs_lookup(
+    query: Annotated[str, Field(description=(
+        "Words to look for in function names and their built-in docs, all of which must "
+        "match, such as \"record field\", \"symbol insert\" or \"LDevice\". Case-insensitive."))],
+    limit: Annotated[int, Field(description=(
+        "Maximum number of matches, best name matches first. Default 25."))] = 25,
+) -> list[dict]:
+    """Search the vs.* scripting API of the running Vectorworks by keyword.
+
+    Read-only (one small job). Use it before writing code for vw_exec_python:
+    it shows the signature the bridge will enforce. Returns [{name, doc
+    (signature and description as Vectorworks ships them), types (the
+    parameter types the bridge checks, \"name:TYPE, ...\" plus the codes), safety
+    (null, or \"crash\" / \"hang\" / \"interactive\" / \"document_level\" from the
+    safety sweep: crash and hang are refused, interactive needs
+    allow_dialogs)}]."""
     res = _run_raw(LOOKUP_CODE % __import__("json").dumps({"query": query, "limit": limit}))
     if not res["ok"]:
         raise ToolError(res["error"])
@@ -480,44 +576,83 @@ def vw_vs_lookup(query: str, limit: int = 25) -> list[dict]:
 
 @mcp.tool(annotations=READ)
 def vw_document_info() -> dict:
-    """Active document: name, path, units, active layer/class, counts, selection size."""
+    """Describe the active Vectorworks document: name, path, units, active layer and class, counts.
+
+    Read-only, one small job. Returns {name, path (empty for an unsaved
+    document), units: {display_name, area_name}, active_layer, active_class,
+    layer_count, class_count, selection_count}. Use it to confirm which
+    document a write will land in;
+    vw_list_documents lists all open documents without a job."""
     return vw("document_info")
 
 
 @mcp.tool(annotations=READ)
 def vw_list_layers() -> list[dict]:
-    """All layers (design and sheet) with visibility and which one is active."""
+    """List every layer of the active document, design and sheet layers alike.
+
+    Read-only. Returns [{name, kind (design / sheet), visibility
+    (Vectorworks' numeric code), active}] in the document's layer order. Create layers with
+    vw_create_layer, copy one with vw_duplicate_layer."""
     return vw("list_layers")
 
 
 @mcp.tool(annotations=READ)
-def vw_list_classes(name_contains: str | None = None) -> list[str]:
-    """All class names, optionally filtered by a case-insensitive substring."""
+def vw_list_classes(
+    name_contains: Annotated[str | None, Field(description=(
+        "Only classes whose name contains this text (case-insensitive). Default: all classes."))] = None,
+) -> list[str]:
+    """List the class names of the active document, optionally filtered by a substring.
+
+    Read-only. Returns the names as strings, in Vectorworks' order; class
+    hierarchy shows as \"Parent-Child\". Create classes with vw_create_class or
+    a whole set with vw_apply_class_standard."""
     return vw("list_classes", name_contains=name_contains)
 
 
 @mcp.tool(annotations=READ)
-def vw_get_selection(limit: int = 500) -> list[dict]:
-    """Selected objects on the active layer: uuid, type, name, class, layer,
-    bbox, attached records, and symbol / plug-in name where relevant."""
+def vw_get_selection(
+    limit: Annotated[int, Field(description=(
+        "Maximum number of selected objects to return. Default 500."))] = 500,
+) -> list[dict]:
+    """Describe the objects the user has selected on the active layer.
+
+    Read-only. Returns [{uuid, type, type_code, name, class, layer, bbox,
+    records (attached record names)}]. Use it
+    when the user says \"this one\"; vw_find_objects searches by criteria
+    instead. UUIDs stay valid across calls."""
     return vw("get_selection", limit=limit)
 
 
 @mcp.tool(annotations=READ)
 def vw_find_objects(
-    class_name: str | None = None,
-    layer: str | None = None,
-    object_type: str | None = None,
-    plugin: str | None = None,
-    record: str | None = None,
-    field: str | None = None,
-    value: str | None = None,
-    name: str | None = None,
-    limit: int = 500,
+    class_name: Annotated[str | None, Field(description=(
+        "Exact class name the objects must be in."))] = None,
+    layer: Annotated[str | None, Field(description=(
+        "Exact layer name. Default: every layer."))] = None,
+    object_type: Annotated[str | None, Field(description=(
+        "Vectorworks object type name, such as \"Symbol\", \"Rectangle\", \"Polygon\", "
+        "\"Plug-in Object\", \"Group\"."))] = None,
+    plugin: Annotated[str | None, Field(description=(
+        "Plug-in object name, such as \"Lighting Device\", \"TrussItem\" or \"Stage Deck\"; "
+        "implies plug-in objects only."))] = None,
+    record: Annotated[str | None, Field(description=(
+        "Name of a record format that must be attached to the object (a plug-in object's "
+        "parameters count as a record of its plug-in name)."))] = None,
+    field: Annotated[str | None, Field(description=(
+        "With record: field name whose value must equal `value`."))] = None,
+    value: Annotated[str | None, Field(description=(
+        "With record and field: the value to match, compared as text."))] = None,
+    name: Annotated[str | None, Field(description=(
+        "Exact object name (as set in the Object Info palette)."))] = None,
+    limit: Annotated[int, Field(description=(
+        "Maximum number of objects to return. Default 500."))] = 500,
 ) -> list[dict]:
-    """Find objects by any combination of exact class, layer, type ("Symbol",
-    "Rectangle", "Plug-in Object"...), plug-in name ("Lighting Device"),
-    attached record (optionally with field == value) and object name."""
+    """Find objects in the active document by class, layer, type, plug-in, record or name.
+
+    Read-only; every given criterion must match (all are exact, not
+    substrings). Returns [{uuid, type, name, class, layer, bbox, records,
+    symbol or plugin name}], the same shape as vw_get_selection. For Lighting
+    Devices with their fields use vw_list_lighting_devices instead."""
     return vw(
         "find_objects", cls=class_name, layer=layer, type_=object_type, plugin=plugin,
         record=record, field=field, value=value, name=name, limit=limit,
@@ -525,21 +660,37 @@ def vw_find_objects(
 
 
 @mcp.tool(annotations=READ)
-def vw_get_record(uuid: str, record: str) -> dict[str, Any]:
-    """All field values of a record (or a plug-in object's parameters, using
-    its plug-in name as the record) on the object with this UUID."""
+def vw_get_record(
+    uuid: Annotated[str, Field(description="UUID of the object (from vw_find_objects or vw_get_selection).")],
+    record: Annotated[str, Field(description=(
+        "Record format name, or a plug-in object's name (\"Lighting Device\", \"TrussItem\") to "
+        "read its parameters."))],
+) -> dict[str, Any]:
+    """Read every field of one record, or of a plug-in object's parameters, on one object.
+
+    Read-only. Returns {field name: value as text}. Write with vw_set_record;
+    for Lighting Devices prefer vw_list_lighting_devices and
+    vw_set_lighting_device_fields, which know Spotlight's rules."""
     return vw("get_record", uuid=uuid, record=record)
 
 
 @mcp.tool(annotations=WRITE)
 def vw_set_record(
-    uuid: str, record: str, values: dict[str, Any], document: str | None = None
+    uuid: Annotated[str, Field(description="UUID of the object to change.")],
+    record: Annotated[str, Field(description=(
+        "Record format name, or a plug-in object's name to set its parameters."))],
+    values: Annotated[dict[str, Any], Field(description=(
+        "{field name: new value}. Every name must exist on that record, or nothing changes; "
+        "values are written as text, numbers as numbers."))],
+    document: Annotated[str | None, Field(description=DOC)] = None,
 ) -> dict[str, Any]:
-    """Set record fields (or plug-in parameters) on one object; unknown field
-    names are rejected before anything changes. One undo step. Returns the
-    record afterwards.
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+    """Set fields of one record, or parameters of one plug-in object, on one object.
+
+    Changes the document; one revertible step (vw_revert_last restores the
+    previous values). Unknown field names are rejected before anything
+    changes. For Lighting Devices use vw_set_lighting_device_fields, which
+    applies Spotlight's address rules and verifies the result. Returns the
+    whole record as read back afterwards."""
     app.require_document(document)
     out = vw("set_record", uuid=uuid, record=record, values=values)
     app.get_journal().record(
@@ -551,28 +702,43 @@ def vw_set_record(
 
 @mcp.tool(annotations=READ)
 def vw_list_symbols(
-    name_contains: str | None = None, folder: str | None = None, limit: int = 1000
+    name_contains: Annotated[str | None, Field(description=(
+        "Only symbols whose name contains this text (case-insensitive)."))] = None,
+    folder: Annotated[str | None, Field(description=(
+        "Only symbols whose resource folder path contains this text."))] = None,
+    limit: Annotated[int, Field(description="Maximum number of symbols to return. Default 1000.")] = 1000,
 ) -> list[dict]:
-    """Symbol definitions in the document's resource list, with their folder
-    path; filter by name and/or folder substring (e.g. fixture lookup)."""
+    """List the symbol definitions already in the active document's resources.
+
+    Read-only. Returns [{name, folder}]. These are the names vw_insert_symbol
+    and vw_insert_lighting_devices accept; a symbol that is not in the
+    document yet comes in from a library with vw_list_library_resources and
+    vw_import_resource."""
     return vw("list_symbols", name_contains=name_contains, folder=folder, limit=limit)
 
 
 @mcp.tool(annotations=WRITE)
 def vw_insert_symbol(
-    name: str,
-    x: float,
-    y: float,
-    z: float | None = None,
-    layer: str | None = None,
-    class_name: str | None = None,
-    rotation: float = 0.0,
-    document: str | None = None,
+    name: Annotated[str, Field(description=(
+        "Symbol definition name as vw_list_symbols shows it; it must be in the document's "
+        "resources already (import with vw_import_resource)."))],
+    x: Annotated[float, Field(description="Insertion point x in document units.")],
+    y: Annotated[float, Field(description="Insertion point y in document units.")],
+    z: Annotated[float | None, Field(description=(
+        "Height (z) in document units for a 3D or hybrid symbol. Default: 0, the layer's plane."))] = None,
+    layer: Annotated[str | None, Field(description=(
+        "Design layer to place it on. Default: the active layer."))] = None,
+    class_name: Annotated[str | None, Field(description=(
+        "Class to put the instance in. Default: the active class."))] = None,
+    rotation: Annotated[float, Field(description="Rotation in degrees, counter-clockwise. Default 0.")] = 0.0,
+    document: Annotated[str | None, Field(description=DOC)] = None,
 ) -> dict:
-    """Place a symbol from the document's resources at x, y (document units),
-    optionally at height z, on a layer and in a class. One undo step.
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+    """Place one instance of a symbol from the document's resources at a point.
+
+    Changes the document; one revertible step (vw_revert_last deletes the
+    instance). For lighting fixtures use vw_insert_lighting_devices, which
+    also converts them to Lighting Devices; for truss use vw_insert_truss_run.
+    Returns {uuid, name, layer, class, x, y, z}."""
     app.require_document(document)
     info = vw(
         "insert_symbol", name=name, x=x, y=y, z=z, layer=layer, cls=class_name,
@@ -585,17 +751,20 @@ def vw_insert_symbol(
 
 
 @mcp.tool(annotations=WRITE)
-def vw_revert_last(document: str | None = None) -> dict:
-    """Undo exactly the last MCP write in the active document: restores the
-    previous field values of vw_set_record / vw_set_lighting_device_fields,
-    the previous vertices after vw_set_vertices, deletes the symbol
-    vw_insert_symbol placed, the layer vw_duplicate_layer made, or the
-    objects a vw_exec_python call created. Call repeatedly to step further back.
-    (Vectorworks' own Cmd-Z merges consecutive MCP edits.) A vw_exec_python
-    call that created nothing (it only changed existing objects) can't be
-    reverted and blocks stepping further back.
-    document: optional guard; if given and another document is active,
-    nothing changes (use vw_switch_document first)."""
+def vw_revert_last(
+    document: Annotated[str | None, Field(description=DOC)] = None,
+) -> dict:
+    """Undo exactly the most recent write this server made in the active document.
+
+    Changes the document (back to its previous state for that one call).
+    Every typed write tool records what it changed; this restores previous
+    field values, vertices, class attributes, deletes objects, layers and
+    classes that were created, or writes the inverse Lightwright patch. Call
+    it repeatedly to step further back. Not possible: vw_delete_objects, and
+    a vw_exec_python call that created nothing (it only changed existing
+    objects); such an entry blocks stepping further back. Use this instead of
+    Cmd-Z, which merges consecutive scripted edits. Returns {reverted_tool,
+    ...what was restored or deleted, note?}."""
     app.require_document(document)
     journal = app.get_journal()
     document = vw("current_document")
@@ -638,22 +807,24 @@ _LAST_MAPPING: viewmap.Mapping | None = None
 
 @mcp.tool(annotations=READ)
 def vw_screenshot(
-    title: str | None = None, max_width: int = 1600, mapping: bool = False
+    title: Annotated[str | None, Field(description=(
+        "Part of a document window's title, to pick one when several are open. Default: the "
+        "largest document window."))] = None,
+    max_width: Annotated[int, Field(description=(
+        "The image is shrunk to at most this many pixels wide. Default 1600."))] = 1600,
+    mapping: Annotated[bool, Field(description=(
+        "True: run one small job to read the view (centre, zoom, layer scale) and return "
+        "`mapping`, so a pixel in the picture can be turned into drawing coordinates with "
+        "vw_point_to_world (exact in Top/Plan views only). Default False: no job at all."))] = False,
 ) -> list[Image | TextContent]:
-    """Capture the Vectorworks document window as an image, to check drawn results
-    or to see which dialog is blocking. Does not go through Vectorworks at all
-    (no job, no Apple Event), so it works even when other tools time out.
-    `title` picks a document window by (partial) title when several are open;
-    the image is shrunk to `max_width` pixels. Returns the image plus window
-    geometry (screen points), the saved file path, and `in_front`: any dialog
-    or open menu (a right-click menu left open also stalls jobs) that the
-    document capture would not show. mapping=True adds one small job to read
-    the view (centre, zoom, layer scale) and returns `mapping`: drawing
-    coordinates of the image origin and units per pixel (from the display's
-    pixel density and the white drawing area found in the capture), so a point
-    you see in the picture can be turned into x, y with vw_point_to_world
-    (exact in Top/Plan only; calibrated live 2026-11-20). If that job fails
-    the picture still comes back, with `mapping_error`."""
+    """Capture the Vectorworks document window as an image, without going through Vectorworks.
+
+    Read-only; no job and no Apple Event (unless mapping is requested), so it
+    works even while a dialog blocks every other tool. Use it to check drawn
+    results or to see what is in front; vw_render_layers draws layers from
+    their geometry instead, independent of the window. Returns the image plus
+    JSON {window (screen geometry), path (saved PNG), in_front (dialogs or
+    open menus that stall jobs), mapping? or mapping_error?, view?}."""
     global _LAST_MAPPING
     try:
         path, window, in_front = screenshot.screenshot(
@@ -680,13 +851,20 @@ def vw_screenshot(
 
 
 @mcp.tool(annotations=READ)
-def vw_point_to_world(px: float, py: float, mapping: dict | None = None) -> dict:
-    """Drawing coordinates (x, y) of an image pixel of the last
-    vw_screenshot(mapping=True), e.g. to say "put the truss where that gap is"
-    or to check that an object landed where it looks. Pure arithmetic, no job.
-    `mapping` may be the mapping dict from any earlier screenshot; default is
-    the most recent one in this server session. Exact in Top/Plan views only
-    (the mapping carries a warning otherwise)."""
+def vw_point_to_world(
+    px: Annotated[float, Field(description="Pixel x in the screenshot image, from its left edge.")],
+    py: Annotated[float, Field(description="Pixel y in the screenshot image, from its top edge.")],
+    mapping: Annotated[dict | None, Field(description=(
+        "The `mapping` dict returned by an earlier vw_screenshot(mapping=True). Default: the "
+        "most recent one in this server session."))] = None,
+) -> dict:
+    """Turn a pixel of the last mapped screenshot into drawing coordinates.
+
+    Pure arithmetic, no job, read-only. Use it to say where something seen in
+    the picture is, such as the gap a truss should fill, or to check that an
+    object landed where it looks. Needs a prior vw_screenshot(mapping=True).
+    Exact in Top/Plan views only; otherwise the result carries a warning.
+    Returns {x, y, units, warning?}."""
     m = viewmap.Mapping.from_dict(mapping) if mapping else _LAST_MAPPING
     if m is None:
         raise ToolError("No mapping yet: call vw_screenshot(mapping=True) first.")

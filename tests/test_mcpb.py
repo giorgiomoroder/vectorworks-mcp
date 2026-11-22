@@ -58,3 +58,11 @@ def test_entry_point_runs_the_server_main():
     text = (ROOT / "mcpb_main.py").read_text(encoding="utf-8")
     assert "from vwmcp.server import main" in text
     assert "3, 11" in text  # friendly message on an old Python
+
+
+def test_first_sentence_does_not_stop_at_abbreviations():
+    first = build_mcpb._first_sentence
+    assert first('Create a class (use "-" for hierarchy, e.g. "Lighting-Truss"). Returns the name.') \
+        == 'Create a class (use "-" for hierarchy, e.g. "Lighting-Truss").'
+    assert first("Move objects, i.e. shift them by an offset. Revertible.") == "Move objects, i.e. shift them by an offset."
+    assert first("Values are mm strings such as 1.5 m or 48 in. Second sentence.") == "Values are mm strings such as 1.5 m or 48 in."
