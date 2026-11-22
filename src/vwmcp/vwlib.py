@@ -1215,15 +1215,22 @@ def _insert_tower(symbol, rec, x, y, count, z, position_name, system, base_symbo
         stack.append((top_symbol, _truss_record(top_symbol)))
     created, prev, level = [], "", z
     rows = []
+    # A straight lies along +x with its cross-section at z 0..Height; rotating it
+    # -90 degrees about y through its foot stands it up with the section at
+    # x -Height..0. Base plates and spindles are centred at x = +Height/2, so
+    # the standing pieces are placed one truss height along +x to share that
+    # footprint (live 2026-11-21: Michael's zoomed capture showed the spindle
+    # beside the column before this).
+    shift = rec["height_mm"] * to_doc
     try:
         for sym, r in stack:
-            h = _place_truss_item(r, sym, (x, y), 0.0, level, system, prev, position_name, vertical=True)
+            pt = (x + shift, y) if r is rec else (x, y)
+            h = _place_truss_item(r, sym, pt, 0.0, level, system, prev, position_name, vertical=True)
             created.append(h)
             if r is rec:
-                # Vertical=True is bookkeeping only; stand the piece up by rotating it
-                # -90 degrees about the y axis through its own foot (live 2026-11-21, seen
-                # by Michael). Base plates and spindles keep their own geometry.
-                vs.Set3DRot(h, 0, -90, 0, x, y, level)
+                # Vertical=True is bookkeeping only; the rotation stands the piece up
+                # (seen by Michael) and survives the reset.
+                vs.Set3DRot(h, 0, -90, 0, pt[0], pt[1], level)
                 vs.ResetObject(h)
             prev = h_uuid(h)
             rows.append({"uuid": prev, "symbol": sym, "z": level})

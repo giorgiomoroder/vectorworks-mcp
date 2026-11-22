@@ -1121,7 +1121,9 @@ def test_vertical_truss_run_stacks_pieces_between_base_and_top(doc, fake_vs):
     items = truss_items(doc)
     assert [o["fields"]["Symbol"].split("F34")[1] for o in items] == [" 800mm Steel Plate Base", "-300 Straight",
                                                                         "-300 Straight", "-300 Straight", " Spindel"]
-    assert all(o["x"] == 100 and o["y"] == 50 and o["fields"]["Vertical"] == "True" for o in items)
+    shift = 290 / 25.4  # standing pieces sit one truss height along +x (see _insert_tower)
+    assert [round(o["x"], 2) for o in items] == [100, round(100 + shift, 2), round(100 + shift, 2), round(100 + shift, 2), 100]
+    assert all(o["y"] == 50 and o["fields"]["Vertical"] == "True" for o in items)
     base_h, piece_h = 6 / 25.4, 3000 / 25.4
     assert [round(o["z"], 3) for o in items] == [round(v, 3) for v in (0, base_h, base_h + piece_h, base_h + 2 * piece_h, base_h + 3 * piece_h)]
     chain = [o["fields"]["C_START_UUID"] for o in items]
@@ -1129,7 +1131,7 @@ def test_vertical_truss_run_stacks_pieces_between_base_and_top(doc, fake_vs):
     assert all(o["fields"]["PositionName"] == "TOWER SL" and o["fields"]["TrussSystem"] == "T0" for o in items)
     # the straights are stood up by a 3D rotation about their own foot (Vertical alone does nothing)
     handles = [h for h, o in doc.objects.items() if o["pio"] == "TrussItem"]
-    assert doc.rot3d == [(handles[i], 0, -90, 0, 100, 50, pytest.approx(base_h + (i - 1) * piece_h)) for i in (1, 2, 3)]
+    assert doc.rot3d == [(handles[i], 0, -90, 0, pytest.approx(100 + shift), 50, pytest.approx(base_h + (i - 1) * piece_h)) for i in (1, 2, 3)]
     generic.vw_revert_last()
     assert truss_items(doc) == []
 

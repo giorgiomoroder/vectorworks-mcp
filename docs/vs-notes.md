@@ -204,7 +204,12 @@ Live 2026-11-21 on test_mcp.vwx (hoist inserted by Michael with the Hoist tool):
   dimension string ("6mm", "500mm"), which `_truss_record` now falls back
   to. `vw_insert_truss_run(vertical=True, base_symbol=, top_symbol=)`
   stacks base, straights and spindle from z, rotates the straights, chains
-  them; a 3-piece tower read back 374.25 in (9.5 m) tall, linked.
+  them; a 3-piece tower read back 374.25 in (9.5 m) tall, linked. The
+  rotation puts the section at x -Height..0 while the plate and spindle
+  are centred at x = +Height/2, so standing pieces are placed one truss
+  height along +x (Michael's zoomed capture showed the spindle beside the
+  column before that; after it the sockets sit on the chords). The Object
+  Info of a stood-up piece shows Hanging Angle 90 and Trim Height = its z.
   `vw_list_truss` centres of vertical pieces are off in x (the 3D bbox
   includes the flat 2D part): use the z values.
 
