@@ -92,7 +92,8 @@ after and anything Spotlight overrode.
 
 ### MVR export pre-flight
 1. `vw_mvr_check` (optionally `position=`). Errors block or empty the MVR:
-   `no_gdtf`, `no_mode`, `no_fixture_id`, `duplicate_fixture_id`,
+   `no_gdtf`, `gdtf_unlinked` (a name typed in but no fixture type linked),
+   `no_mode`, `no_fixture_id`, `duplicate_fixture_id`,
    `unpatched`, `address_overlap`, `address_past_512`. Warnings:
    `address_shared` (two fixtures on one identical address, often intended),
    `no_position`, `position_without_object`, `symbol_without_3d`,
@@ -100,8 +101,10 @@ after and anything Spotlight overrode.
    (Vectorworks 2026 has no per-fixture "Fixture ID" field; its `FixtureID`
    is the fixture type name).
 2. Fix data with `vw_set_lighting_device_fields` (Fixture ID,
-   UniverseAddress, Position, Fixture Mode); a GDTF fixture type is chosen in
-   the Object Info palette; a 2D-only symbol needs a hybrid one
+   UniverseAddress, Position, Fixture Mode). A GDTF fixture type can only be
+   chosen in the Object Info palette's GDTF chooser: writing `GDTF Fixture
+   Name` / `GDTF Fixture Mode` stores text and links nothing (live
+   2026-11-21), so ask the user to pick it. A 2D-only symbol needs a hybrid one
    (`vw_list_library`, `vw_import_resource`).
 3. Re-run the check, then the user exports: File > Export > Export MVR.
    There is no scripting call for the export itself.

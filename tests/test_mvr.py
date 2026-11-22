@@ -4,8 +4,8 @@ from vwmcp import mvr
 
 ALL_FIELDS = [
     "Unit Number", "Channel", "Position", "Inst Type", "Symbol Name", "Fixture Mode",
-    "GDTF Fixture Name", "Fixture ID", "UniverseAddress", "Absolute Address",
-    "Num Channels",
+    "GDTF Fixture Name", "GDTF Fixture Type ID", "Fixture ID", "UniverseAddress",
+    "Absolute Address", "Num Channels",
 ]
 
 
@@ -15,7 +15,8 @@ def device(uuid="u1", unit="1", channel="1", position="FOH", symbol="MAC One",
     return {
         "uuid": uuid, "Unit Number": unit, "Channel": channel, "Position": position,
         "Inst Type": "MAC One", "Symbol Name": symbol, "Fixture Mode": mode,
-        "GDTF Fixture Name": gdtf, "Fixture ID": fixture_id, "UniverseAddress": address,
+        "GDTF Fixture Name": gdtf, "GDTF Fixture Type ID": "12" if gdtf else "0",
+        "Fixture ID": fixture_id, "UniverseAddress": address,
         "Absolute Address": absolute, "Num Channels": channels,
     }
 
@@ -171,3 +172,20 @@ def test_identical_addresses_are_a_shared_address_warning_not_an_overlap():
     assert shared["severity"] == "warning" and [x["uuid"] for x in shared["devices"]] == ["a", "b"]
     overlap = issue(out, "address_overlap")
     assert overlap["severity"] == "error" and [x["uuid"] for x in overlap["devices"]] == ["c", "d"]
+
+
+def test_gdtf_name_typed_but_not_linked_is_an_error():
+    # Live 2026-11-21: writing 'GDTF Fixture Name' / 'GDTF Fixture Mode' as text
+    # links nothing (type id stays 0, channel count unchanged); the link is made
+    # in the Object Info palette's GDTF chooser.
+    linked = device(uuid="a")
+    typed = {**device(uuid="b"), "GDTF Fixture Type ID": "0"}
+    blank = device(uuid="c", gdtf="")
+    out = mvr.run_checks(data([linked, typed, blank]))
+    i = issue(out, "gdtf_unlinked")
+    assert i["severity"] == "error" and [d["uuid"] for d in i["devices"]] == ["b"]
+    assert "Object Info" in i["message"]
+    assert [d["uuid"] for d in issue(out, "no_gdtf")["devices"]] == ["c"]
+    # without the type id field (older documents) the check is skipped, not fired
+    out2 = mvr.run_checks(data([typed], fields=[f for f in ALL_FIELDS if f != "GDTF Fixture Type ID"]))
+    assert "gdtf_unlinked" not in checks(out2)

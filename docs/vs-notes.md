@@ -705,6 +705,23 @@ stale `.lw6` removed fixtures. Our tools refuse all three. Verified live
 LightPlot_v2026.xml`), a Channel patch landed about a second after the click
 into Vectorworks, the inverse patch on revert landed the same way.
 
+## GDTF assignment (live 2026-11-21, VW 2026, test_mcp.vwx)
+
+A `Martin MAC 250 Wash` hung from the Martin library came in with `GDTF
+Fixture Name` "" and `Fixture Mode` "Martin Mac 250 wash 16.lit" (a Vision
+profile), `Num Channels` 13. Writing `GDTF Fixture Name` ("Generic@LED_RGBW8",
+"LED RGBW8", with or without ".gdtf") and `Fixture Mode` / `GDTF Fixture
+Mode` "Default" through `SetRField` + reset: the text sticks, but `GDTF
+Fixture Type ID` stays 0, `Num Channels` stays 13, `UseGDTFGeometry` False,
+and changing `Fixture Mode` only flips `Vision Lit Override` to True. So the
+GDTF link lives in `GDTF Fixture Type ID` (a document resource id made by
+the Object Info palette's GDTF chooser) and cannot be set by field; the
+record also has `GDTF Fixture Custom ID` and `GDTF CIE Color`. Vectorworks
+ships seven generic GDTF files in `Plug-Ins/VW_Spotlight/Data/GDTF/`
+(`Generic@LED_RGB8.gdtf`, `LED_RGBW8`, `Tungsten_8Bit`, Showcase ...); no
+`.gdtf` under Libraries or the user folder. `vw_mvr_check` now reports
+`gdtf_unlinked` for a typed name with type id 0.
+
 ## Live findings 2026-11-21 (safety batch on VW 2026 31.7 build 879357; Bobby Lee plot; 2027 untouched)
 
 - **Bridge upgrade without a restart.** 2026 had bridge 0.1.0 cached (uptime

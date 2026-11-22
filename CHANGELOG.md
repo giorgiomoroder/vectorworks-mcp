@@ -3,6 +3,12 @@
 Releases are tagged after a live-tested batch, not after every commit.
 Dates are the day the batch was verified inside Vectorworks.
 
+## Unreleased
+
+- `vw_mvr_check`: `gdtf_unlinked` for a GDTF name typed into the field
+  without a linked fixture type (writing the field links nothing; only the
+  Object Info palette's GDTF chooser does).
+
 ## 0.2.0 (2026-11-21), beta
 
 Live-tested on Vectorworks 2026 (31.7). 53 tools.

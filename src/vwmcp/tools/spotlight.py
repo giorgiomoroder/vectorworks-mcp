@@ -123,6 +123,10 @@ def vw_set_lighting_device_fields(
     Universe or DMX Address alone. Undo exactly this call with vw_revert_last.
     Returns one item per device with `uuid`, `before`, `after` (re-read from
     Vectorworks) and `not_applied` for values Spotlight overrode; trust `after`.
+    
+    GDTF fixture types cannot be assigned here: 'GDTF Fixture Name' and
+    'GDTF Fixture Mode' accept text but link nothing (live 2026-11-21);
+    the user picks the GDTF in the Object Info palette.
     """
     app.require_document(document)
     for u in updates:
@@ -210,7 +214,9 @@ def vw_mvr_check(
     or duplicate Fixture ID, no DMX patch, overlapping DMX footprints in one
     universe, footprint past channel 512. Warnings: device without position,
     position name with no position object, symbol with 2D geometry only (exports
-    as empty geometry), symbol missing from the document. Returns {ok,
+    as empty geometry), symbol missing from the document; gdtf_unlinked: a
+    GDTF name typed into the field without a linked fixture type (type id 0),
+    which only the Object Info palette's GDTF chooser can fix. Returns {ok,
     device_count, summary: {check: count}, issues: [{check, severity:
     "error" | "warning", message, devices: [{uuid, position, unit, channel}]}],
     document, next_steps}; a "field_missing" issue lists the fields this

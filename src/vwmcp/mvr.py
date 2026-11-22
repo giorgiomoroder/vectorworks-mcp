@@ -36,6 +36,7 @@ ERROR, WARNING = "error", "warning"
 # check -> (severity, fields it needs)
 NEEDS = {
     "no_gdtf": (ERROR, ["GDTF Fixture Name"]),
+    "gdtf_unlinked": (ERROR, ["GDTF Fixture Name", "GDTF Fixture Type ID"]),
     "no_mode": (ERROR, ["Fixture Mode"]),
     "no_fixture_id": (ERROR, ["Fixture ID"]),
     "duplicate_fixture_id": (ERROR, ["Fixture ID"]),
@@ -138,7 +139,14 @@ def run_checks(data: dict) -> dict:
 
     blank("no_gdtf", "GDTF Fixture Name",
           "No GDTF fixture type: these export without geometry or channel layout. Pick a "
-          "GDTF fixture in the Object Info palette or set 'GDTF Fixture Name'.")
+          "GDTF fixture in the Object Info palette (typing a name into the field does not link it).")
+    if active("gdtf_unlinked"):
+        add("gdtf_unlinked",
+            [r for r in rows if str(r.get("GDTF Fixture Name", "")).strip()
+             and str(r.get("GDTF Fixture Type ID", "0")).strip() in ("", "0")],
+            "A GDTF name is typed in but no fixture type is linked (type id 0): the MVR gets no "
+            "geometry or channel layout. Choose the GDTF in the Object Info palette's GDTF chooser; "
+            "writing the field does not link it (live 2026-11-21).")
     if active("no_mode") and active("no_gdtf"):
         add("no_mode", [r for r in rows if str(r.get("GDTF Fixture Name", "")).strip()
                         and not str(r.get("Fixture Mode", "")).strip()],
