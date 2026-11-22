@@ -138,7 +138,9 @@ Vectorworks restart. Claude Code users keep using the installer script.
 | `vw_list_library` | Browse the Vectorworks and user libraries on disk (lighting, truss, people, stage decks), or list the symbols inside one library file |
 | `vw_import_resource` | Import one symbol or plug-in style from a library file into the document |
 | `vw_insert_truss_run` | A straight truss run from a library symbol: pieces end to end at a trim height, linked into a Braceworks system, named position |
+| `vw_insert_truss_path` | A truss shape (L, U, rectangle) from straights and matching corner pieces along a polyline, one linked system |
 | `vw_list_truss` | Truss inventory: runs grouped by system, pieces in order, total length and weight, broken links flagged |
+| `vw_insert_hoists`, `vw_list_hoists` | Place Spotlight hoists at points with ID, location, function and hook height, data copied from the hoist symbol; rigging inventory with capacities |
 | `vw_insert_stage_decks` | Build a platform or riser from Spotlight Stage Deck objects: columns x rows of a deck size at a height, leg style, purpose |
 | `vw_insert_platform` | Platform and steps in one call: decks plus a flight of Stage Steps centred on a chosen edge, rails, class; one revertible step |
 | `vw_insert_stage_ramp` | A Stage Ramp down from a stage edge, by ramp length or pitch angle, with rails and a down arrow; revertible |

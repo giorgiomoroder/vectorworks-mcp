@@ -414,7 +414,8 @@ def test_truss_run_places_pieces_on_length_centres_linked(doc, fake_vs):
     assert out["system"] == "T0" and out["piece_length"] == pytest.approx(118.11, 0.01)
     assert out["total_length"] == pytest.approx(3 * 118.11, 0.01) and len(out["pieces"]) == 3
     pcs = [o for o in doc.objects.values() if o["pio"] == "TrussItem"]
-    assert [round(p["y"], 2) for p in pcs] == [109.06, 227.17, 345.28]
+    # the library straights' origin is their start face (Low X = 0): pieces start at y = 50
+    assert [round(p["y"], 2) for p in pcs] == [50, 168.11, 286.22]
     assert all(p["x"] == pytest.approx(100) for p in pcs)
     assert all(p["z"] == 120 for p in pcs) and len(doc.moves3d) == 3
     f = [p["fields"] for p in pcs]
@@ -475,9 +476,11 @@ def test_list_truss_groups_runs_in_chain_order(doc, fake_vs):
     assert t0["total_weight_kg"] == pytest.approx(3 * 19.05) and t0["linked"] is True
     assert t0["positions"] == ["US"] and t0["symbols"] == ["Global Truss F34-300 Straight"]
     assert [round(p["length"], 1) for p in t0["pieces"]] == [118.1] * 3
-    assert [round(p["center"][0], 1) for p in t0["pieces"]] == [59.1, 177.2, 295.3]
+    # the fake reports the insertion point as the centre; pieces start at 0, 118.1, 236.2
+    assert [round(p["center"][0], 1) for p in t0["pieces"]] == [0, 118.1, 236.2]
     (x0, y0), (x1, y1) = t0["bbox"]
-    assert (x0, y0, x1, y1) == pytest.approx((0, -5, 354.33, 5), abs=0.1)
+    # bbox from the fake's "centres" (really the insertion points) +- half a piece
+    assert (x0, y0, x1, y1) == pytest.approx((-59.06, -5, 295.28, 5), abs=0.1)
     pcs = [o for o in doc.objects.values() if o["pio"] == "TrussItem" and o["fields"]["TrussSystem"] == "T0"]
     assert [p["uuid"] for p in t0["pieces"]] == [o["uuid"] for o in pcs]
     assert drawing.vw_list_truss(system="T1")["runs"][0]["count"] == 1
@@ -991,3 +994,82 @@ def test_list_hoists_reads_the_inventory(doc, fake_vs):
     assert row["capacity_kg"] == 1000 and row["hook_height_mm"] == 12000 and row["direction"] == "up"
     assert row["x"] == 0 and row["y"] == 0 and "uuid" in row
     assert drawing.vw_list_hoists(location="nowhere")["count"] == 0
+
+
+# ---- truss paths with corners (C21 geometry read live 2026-11-21) -----------------
+
+def add_corner_symbol(doc, vs, name="Global Truss F34C21 Corner", center=355, bottom=(355, -355)):
+    h = doc._import(name)
+    doc.symdef_records[h] = {"BrxTrussItemRecord": {
+        "Name": "F34C21", "Type": "F34", "ItemType": "Corner", "Length": "0", "Height": "290", "Width": "290",
+        "Section": "F34", "Connection": "F34", "Weight": "7.71", "CornerType": "L_Corner",
+        "Center X": str(center), "Bottom Valid": "True", "Bottom X": str(bottom[0]), "Bottom Y": str(bottom[1])}}
+    PIO_FIELDS["TrussItem"] = PIO_FIELDS["TrussItem"] + ["CornerType"]
+    doc.rotations = {}
+    old = vs.CreateCustomObjectN
+    vs.CreateCustomObjectN = lambda n, pt, rot, pref: doc.rotations.__setitem__(old(n, pt, rot, pref), rot) or max(doc.objects)
+    return h
+
+
+def truss_items(doc):
+    return [o for o in doc.objects.values() if o["pio"] == "TrussItem"]
+
+
+def test_truss_path_fills_legs_and_turns_left_with_a_corner(doc, fake_vs):
+    add_truss_symbol(doc, fake_vs)
+    add_corner_symbol(doc, fake_vs)
+    # inches: a 3000 mm piece is 118.11 in, the corner takes 13.98 in from each leg
+    out = drawing.vw_insert_truss_path("Global Truss F34-300 Straight", "Global Truss F34C21 Corner",
+                                       path=[[0, 0], [1000, 0], [1000, 1000]], z=240, position_name="US TRUSS")
+    assert out["system"] == "T0" and out["corners"] == 1 and out["straights"] == 16
+    legs = out["legs"]
+    assert legs[0]["pieces"] == 8 and legs[0]["gap"] == pytest.approx(1000 - 13.98 - 8 * 118.11, abs=0.05)
+    assert legs[1]["pieces"] == 8 and legs[1]["turn"] is None and legs[0]["turn"] == "left"
+    items = truss_items(doc)
+    straights = [o for o in items if o["fields"]["ItemType"] == "Line"]
+    corners = [o for o in items if o["fields"]["ItemType"] == "Corner"]
+    assert len(straights) == 16 and len(corners) == 1
+    # leg 1 runs along +x from the start; leg 2 starts 13.98 in past the vertex and runs along +y
+    assert [round(o["x"], 2) for o in straights[:2]] == [0, 118.11] and straights[0]["y"] == 0
+    assert round(straights[8]["x"], 2) == 1000 and round(straights[8]["y"], 2) == pytest.approx(13.98, abs=0.01)
+    c = corners[0]
+    # a left turn enters through the Bottom face: rotation = heading - 90, insertion so that Low = leg 2's start
+    assert doc.rotations[max(h for h, o in doc.objects.items() if o is c)] == pytest.approx(-90)
+    assert (round(c["x"], 2), round(c["y"], 2)) == (1000, 13.98)
+    assert c["fields"]["CornerType"] == "L_Corner" and c["fields"]["Length"] == "0mm" and c["fields"]["Weight"] == "7710"
+    # one chain: each item links to the previous one, corner included
+    chain = [o["fields"]["C_START_UUID"] for o in items]
+    assert chain[0] == "" and chain[1:] == [o["uuid"] for o in items[:-1]]
+    assert all(o["fields"]["TrussSystem"] == "T0" and o["fields"]["PositionName"] == "US TRUSS" for o in items)
+    assert all(o["z"] == 240 for o in items)
+    generic.vw_revert_last()
+    assert truss_items(doc) == []
+
+
+def test_truss_path_right_turn_places_the_corner_on_the_leg_end(doc, fake_vs):
+    add_truss_symbol(doc, fake_vs)
+    add_corner_symbol(doc, fake_vs)
+    out = drawing.vw_insert_truss_path("Global Truss F34-300 Straight", "Global Truss F34C21 Corner",
+                                       path=[[0, 0], [500, 0], [500, -500]])
+    assert out["legs"][0]["turn"] == "right"
+    c = [o for o in truss_items(doc) if o["fields"]["ItemType"] == "Corner"][0]
+    # a right turn enters through the Low face at the leg's end, heading along the leg
+    assert (round(c["x"], 2), round(c["y"], 2)) == (500 - 13.98, 0)
+    assert doc.rotations[max(h for h, o in doc.objects.items() if o is c)] == pytest.approx(0)
+
+
+def test_truss_path_refuses_bad_input(doc, fake_vs):
+    add_truss_symbol(doc, fake_vs)
+    add_corner_symbol(doc, fake_vs)
+    with pytest.raises(ToolError, match="two points"):
+        drawing.vw_insert_truss_path("Global Truss F34-300 Straight", "Global Truss F34C21 Corner", path=[[0, 0]])
+    with pytest.raises(ToolError, match="90"):  # the corner turns 90 degrees; a 45 degree bend does not fit it
+        drawing.vw_insert_truss_path("Global Truss F34-300 Straight", "Global Truss F34C21 Corner",
+                                     path=[[0, 0], [500, 0], [1000, 500]])
+    with pytest.raises(ToolError, match="not a corner"):
+        drawing.vw_insert_truss_path("Global Truss F34-300 Straight", "Global Truss F34-300 Straight",
+                                     path=[[0, 0], [500, 0], [500, 500]])
+    with pytest.raises(ToolError, match="too short"):
+        drawing.vw_insert_truss_path("Global Truss F34-300 Straight", "Global Truss F34C21 Corner",
+                                     path=[[0, 0], [20, 0], [20, 500]])
+    assert truss_items(doc) == []

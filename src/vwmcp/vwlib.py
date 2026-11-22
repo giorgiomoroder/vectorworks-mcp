@@ -979,7 +979,155 @@ def _truss_record(symbol):
     return {"name": f("Name"), "type": f("Type"), "item_type": f("ItemType") or "Line",
             "length_mm": float(f("Length") or 0), "height_mm": float(f("Height") or 0),
             "width_mm": float(f("Width") or 0), "section": f("Section"),
-            "connection": f("Connection"), "weight_kg": float(f("Weight") or 0)}
+            "connection": f("Connection"), "weight_kg": float(f("Weight") or 0),
+            # corners (live 2026-11-21): the piece's local frame has the incoming
+            # face ("Low") at the origin along +x; "Center X" is what it takes
+            # from each leg; the outgoing face centre is the Bottom point.
+            "corner_type": f("CornerType"), "center_mm": float(f("Center X") or 0),
+            "bottom_mm": (float(f("Bottom X") or 0), float(f("Bottom Y") or 0)),
+            "bottom_valid": f("Bottom Valid") == "True",
+            # where the symbol's origin sits relative to its start (Low) face:
+            # (0, 0) for the F34 library pieces (live 2026-11-21), so the
+            # insertion point is the start, not the centre.
+            "low_mm": (float(f("Low X") or 0), float(f("Low Y") or 0))}
+
+
+def _insertion_for_low(rec, low_pt, heading_deg):
+    """Insertion point that puts the piece's Low (start) face at low_pt."""
+    import math
+    lx, ly = rec["low_mm"][0] * _mm_to_doc(), rec["low_mm"][1] * _mm_to_doc()
+    r = math.radians(heading_deg)
+    return (low_pt[0] - (lx * math.cos(r) - ly * math.sin(r)),
+            low_pt[1] - (lx * math.sin(r) + ly * math.cos(r)))
+
+
+def _truss_params(rec, symbol, system, prev, position_name):
+    params = {
+        "Symbol": symbol, "Name": rec["name"], "Type": rec["type"],
+        "ItemType": rec["item_type"], "CrossSection": rec["section"],
+        "ConnectionIdent": rec["connection"],
+        "Length": "%gmm" % rec["length_mm"], "Height": "%gmm" % rec["height_mm"],
+        "Width": "%gmm" % rec["width_mm"],
+        "TrussSystem": system, "TrussLine": "1", "TrussSystemLineIdent": system + "-1",
+        "C_START_UUID": prev, "PositionName": position_name or "",
+    }
+    if rec["item_type"] == "Corner" and rec["corner_type"]:
+        params["CornerType"] = rec["corner_type"]
+    if rec["weight_kg"]:
+        params["Weight"] = "%g" % (rec["weight_kg"] * 1000)  # grams, as Insert Truss stores it
+        if rec["length_mm"]:
+            params["Distributed weight"] = "%g" % (rec["weight_kg"] / (rec["length_mm"] / 1000.0))
+    return params
+
+
+def _place_truss_item(rec, symbol, pt, rotation, z, system, prev, position_name):
+    h = vs.CreateCustomObjectN("TrussItem", pt, rotation, False)
+    if _is_nil(h):
+        raise RuntimeError("TrussItem plug-in did not create a piece")
+    _write_fields(h, "TrussItem", _truss_params(rec, symbol, system, prev, position_name))
+    if z:
+        vs.Move3DObj(h, 0, 0, z)
+    return h
+
+
+@_keep_selection
+def insert_truss_path(straight, corner, path, z=0.0, position_name=None, layer=None,
+                      truss_system=None, library_path=None):
+    """Straight pieces along every leg of `path` (document units) with a
+    corner piece at every interior vertex, all chained into one system.
+    Each leg is filled from its start with whole pieces; the leftover is
+    reported as `gap`. All-or-nothing."""
+    import math
+    if len(path) < 2:
+        raise ValueError("path needs at least two points")
+    imported = []
+    for sym in (straight, corner):
+        if _is_nil(vs.GetObject(sym)) and library_path:
+            imported.append(import_resource(library_path, sym)["name"])
+    srec, crec = _truss_record(straight), _truss_record(corner)
+    if srec["length_mm"] <= 0:
+        raise ValueError("%s on %r has no Length" % (BRX, straight))
+    if crec["item_type"] != "Corner" or not crec["bottom_valid"]:
+        raise ValueError("%r is not a corner piece (ItemType %r)" % (corner, crec["item_type"]))
+    to_doc = _mm_to_doc()
+    piece = srec["length_mm"] * to_doc
+    take = crec["center_mm"] * to_doc  # what the corner takes from each leg at a vertex
+    bx, by = crec["bottom_mm"]
+    turn_deg = math.degrees(math.atan2(by, bx - crec["center_mm"]))  # negative: the piece turns right
+    pts = [(float(x), float(y)) for x, y in path]
+    legs = []
+    for i in range(len(pts) - 1):
+        (x0, y0), (x1, y1) = pts[i], pts[i + 1]
+        length = math.hypot(x1 - x0, y1 - y0)
+        if length <= 0:
+            raise ValueError("path points %d and %d coincide" % (i, i + 1))
+        legs.append({"heading": math.degrees(math.atan2(y1 - y0, x1 - x0)), "length": length})
+    turns = []
+    for i in range(len(legs) - 1):
+        d = (legs[i + 1]["heading"] - legs[i]["heading"] + 180) % 360 - 180
+        if abs(abs(d) - abs(turn_deg)) > 1.0:
+            raise ValueError("the path turns %.1f degrees at point %d but %r turns %.0f degrees"
+                             % (d, i + 1, corner, abs(turn_deg)))
+        turns.append("left" if d > 0 else "right")
+    for i, leg in enumerate(legs):
+        leg["available"] = leg["length"] - (take if i > 0 else 0) - (take if i < len(legs) - 1 else 0)
+        if leg["available"] < piece:
+            raise ValueError("leg %d is too short for one %s piece after the corners (%.1f available)"
+                             % (i + 1, straight, leg["available"]))
+    if layer:
+        _activate_layer(layer)
+    system = truss_system or _next_truss_system()
+    created, prev = [], ""
+    out_legs = []
+    try:
+        for i, leg in enumerate(legs):
+            rad = math.radians(leg["heading"])
+            ux, uy = math.cos(rad), math.sin(rad)
+            sx, sy = pts[i]
+            if i > 0:
+                sx, sy = sx + ux * take, sy + uy * take
+            n = int(leg["available"] // piece + 1e-9)
+            for k in range(n):
+                along = piece * k
+                pt = _insertion_for_low(srec, (sx + ux * along, sy + uy * along), leg["heading"])
+                h = _place_truss_item(srec, straight, pt, leg["heading"], z, system, prev, position_name)
+                created.append(h)
+                prev = h_uuid(h)
+            end = (sx + ux * piece * n, sy + uy * piece * n)
+            out_legs.append({"pieces": n, "length": leg["length"], "gap": leg["available"] - piece * n,
+                             "turn": turns[i] if i < len(turns) else None})
+            if i < len(turns):
+                vx, vy = pts[i + 1]
+                if turns[i] == "right":
+                    # enter through the Low face at the leg's end, heading along the leg
+                    rot = leg["heading"]
+                    pt = _insertion_for_low(crec, (vx - ux * take, vy - uy * take), rot)
+                else:
+                    # enter through the Bottom face, leave through Low: rotate so local +y is the heading
+                    rot = leg["heading"] - 90.0
+                    rr = math.radians(rot)
+                    lx, ly = take, -take
+                    low_x = vx + math.cos(math.radians(legs[i + 1]["heading"])) * take
+                    low_y = vy + math.sin(math.radians(legs[i + 1]["heading"])) * take
+                    pt = _insertion_for_low(crec, (low_x, low_y), rot)
+                    # check: Bottom = Low + R(rot)(take, -take) must be the incoming leg's end
+                    bxw = low_x + lx * math.cos(rr) - ly * math.sin(rr)
+                    byw = low_y + lx * math.sin(rr) + ly * math.cos(rr)
+                    if math.hypot(bxw - (vx - ux * take), byw - (vy - uy * take)) > 1e-6 * max(1.0, take):
+                        raise RuntimeError("corner geometry does not close at point %d" % (i + 1))
+                h = _place_truss_item(crec, corner, pt, rot, z, system, prev, position_name)
+                created.append(h)
+                prev = h_uuid(h)
+    except Exception:
+        for h in created:
+            vs.DelObject(h)
+        for name in imported:
+            vs.DelObject(vs.GetObject(name))
+        raise
+    return {"document": current_document(), "system": system, "piece_length": piece,
+            "straights": sum(leg["pieces"] for leg in out_legs), "corners": len(turns),
+            "legs": out_legs, "imported": imported,
+            "items": [{"uuid": h_uuid(h)} for h in created]}
 
 
 def _next_truss_system():
@@ -1020,26 +1168,10 @@ def insert_truss_run(symbol, x, y, count, rotation=0.0, z=0.0, position_name=Non
     created, prev = [], ""
     try:
         for i in range(count):
-            along = length * (0.5 + i)
-            h = vs.CreateCustomObjectN("TrussItem", (x + dx * along, y + dy * along), rotation, False)
-            if _is_nil(h):
-                raise RuntimeError("TrussItem plug-in did not create a piece")
+            along = length * i  # the piece's start face lands here
+            pt = _insertion_for_low(rec, (x + dx * along, y + dy * along), rotation)
+            h = _place_truss_item(rec, symbol, pt, rotation, z, system, prev, position_name)  # class: 2nd job
             created.append(h)
-            params = {
-                "Symbol": symbol, "Name": rec["name"], "Type": rec["type"],
-                "ItemType": rec["item_type"], "CrossSection": rec["section"],
-                "ConnectionIdent": rec["connection"],
-                "Length": "%gmm" % rec["length_mm"], "Height": "%gmm" % rec["height_mm"],
-                "Width": "%gmm" % rec["width_mm"],
-                "TrussSystem": system, "TrussLine": "1", "TrussSystemLineIdent": system + "-1",
-                "C_START_UUID": prev, "PositionName": position_name or "",
-            }
-            if rec["weight_kg"]:
-                params["Weight"] = "%g" % (rec["weight_kg"] * 1000)  # grams, as Insert Truss stores it
-                params["Distributed weight"] = "%g" % (rec["weight_kg"] / (rec["length_mm"] / 1000.0))
-            _write_fields(h, "TrussItem", params)  # class: see create_pio, applied in a 2nd job
-            if z:
-                vs.Move3DObj(h, 0, 0, z)
             prev = h_uuid(h)
     except Exception:
         for h in created:

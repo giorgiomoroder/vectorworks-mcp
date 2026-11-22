@@ -5,6 +5,15 @@ Dates are the day the batch was verified inside Vectorworks.
 
 ## Unreleased
 
+- `vw_insert_hoists` / `vw_list_hoists`: Spotlight hoists (`BrxHoist`) at
+  points with ID, location, function, direction and hook height, data
+  copied from the hoist symbol's record; inventory with capacities.
+- `vw_insert_truss_path`: L, U and rectangle truss shapes from straights
+  and a matching corner piece, one linked system. Truss pieces are now
+  placed by their record's start point: the F34 library straights are
+  start-based, so `vw_insert_truss_run` used to sit half a piece late with
+  them (tool-made DJ truss pieces were centred).
+
 - 50 tools instead of 54: `vw_get_record` / `vw_set_record` read and write a
   plug-in object's parameters when no record is named (replaces
   `vw_get_pio_parameters` / `vw_set_pio_parameters`); `vw_exec_python` takes

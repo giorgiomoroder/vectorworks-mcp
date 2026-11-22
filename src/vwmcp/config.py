@@ -67,7 +67,7 @@ TOOL_GROUPS = {
         "vw_import_hookup", "vw_lightwright_snapshot", "vw_lightwright_patch",
     ],
     "stage": [
-        "vw_insert_truss_run", "vw_list_truss", "vw_insert_hoists", "vw_list_hoists",
+        "vw_insert_truss_run", "vw_insert_truss_path", "vw_list_truss", "vw_insert_hoists", "vw_list_hoists",
         "vw_insert_stage_decks", "vw_insert_stage_steps",
         "vw_insert_stage_ramp", "vw_insert_soft_goods", "vw_insert_platform", "vw_insert_band",
     ],

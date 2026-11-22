@@ -143,7 +143,7 @@ before changing anything that touches Vectorworks.
 
 ```bash
 uv sync
-uv run pytest -q          # ~320 tests; fake executor runs the real bridge code
+uv run pytest -q          # ~330 tests; fake executor runs the real bridge code
 uv run vwmcp              # stdio server
 uv build                  # wheel must contain vwmcp/_plugin/vwmcp_bridge.py
 ```
@@ -177,15 +177,20 @@ on a throwaway doc and record findings in `docs/vs-notes.md`:
       `ImportResourceToCurrentFile`). Only locally present `.vwx` libraries are
       seen (many are download-on-demand); importing a truss symbol brings the 2D
       definition only.
-- [ ] **Hoists** (Spotlight `Hoist` PIO) and **truss corners/towers**: need the
-      default objects read live first (parameter names), then build. Not started.
+- [x] **Hoists** (2026-11-21, live): the current hoist is the `BrxHoist`
+      plug-in; `vw_insert_hoists` / `vw_list_hoists` (vs-notes "Hoists and
+      truss corners"). **Truss corners** (2026-11-21, live):
+      `vw_insert_truss_path` places straights and the family's corner piece
+      along a polyline; towers not started.
 - [~] **Truss.** `vw_insert_truss_run` (live 2026-11-17): straight runs from a
       library symbol, end to end at a height, dimensions/weight from the symbol's
       `BrxTrussItemRecord`, linked via `C_START_UUID`, new TrussSystem, class in a
       second job. `vw_list_truss` (live 2026-11-17) inventories runs by system
-      in chain order with totals and flags broken chains. Still to do:
-      corners/towers. Michael has no Braceworks licence, so the "does it
-      calculate" check is off the list.
+      in chain order with totals and flags broken chains. Corners: see
+      Hoists above (`vw_insert_truss_path`, 2026-11-21); the F34 library
+      straights are start-based, so pieces are now placed by the record's
+      `Low` point. Towers still to do. Michael has no Braceworks licence,
+      so the "does it calculate" check is off the list.
 - [~] **Lighting fixtures.** `vw_insert_lighting_devices` (live 2026-11-17): fixture
       symbol → `vs.Symbol` + "Convert to Instrument" menu command → real Lighting
       Devices, hung at the position's height at a spacing, Unit/Channel/Purpose set

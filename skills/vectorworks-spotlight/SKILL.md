@@ -116,6 +116,14 @@ after and anything Spotlight overrode.
 3. Check with `vw_list_lighting_devices(position=...)`.
 
 ### Truss, decks, steps, ramps, soft goods
+- `vw_insert_truss_path(straight, corner, path=[[x, y], ...], z, position_name)`:
+  an L, U or rectangle from straights plus the family's corner piece (F34C21
+  for 90 degrees); each leg is filled from its start, the leftover is
+  reported per leg as `gap`. `vw_insert_hoists(symbol, points, height,
+  ids, location, function)` hangs hoists at points (hook height as a
+  dimension string such as "12 m"); `vw_list_hoists` is the rigging
+  inventory with capacities. Hoist symbols come from the Rigging/Hoists
+  libraries (`vw_list_library(query="rigging/hoists")`, `vw_import_resource`).
 - `vw_insert_truss_run(symbol, x, y, count, rotation, z, position_name)`:
   straight runs from a truss symbol, linked into a system; `vw_list_truss`
   to verify (broken chains are flagged).

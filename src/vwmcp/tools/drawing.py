@@ -310,7 +310,8 @@ def vw_insert_truss_run(
     y: Annotated[float, _d(f"Start point y of the run in {_UNITS}.")],
     count: Annotated[int, _d("Number of pieces placed end to end; at least 1.")],
     rotation: Annotated[float, _d("Direction of the run in degrees: 0 = along +x, 90 = along +y.")] = 0.0,
-    z: Annotated[float, _d(f"Height of the truss centre line in {_UNITS}.")] = 0.0,
+    z: Annotated[float, _d(f"How high to raise the truss in {_UNITS}: its underside sits at z, the "
+                            "centre line half the truss height above (live 2026-11-21).")] = 0.0,
     position_name: Annotated[str | None, _d("Spotlight position name written into every piece, so lighting "
                                             "devices can refer to the run. Omitted: left empty.")] = None,
     layer: Annotated[str | None, _d(_LAYER)] = None,
@@ -339,6 +340,50 @@ def vw_insert_truss_run(
     out = _journal(out, "vw_insert_truss_run", ops)
     if class_name:  # second job: see vw_create_pio
         vw("set_objects_class", uuids=[p["uuid"] for p in out["pieces"]], cls=class_name)
+        out["class"] = class_name
+    return out
+
+
+@mcp.tool(annotations=WRITE)
+def vw_insert_truss_path(
+    straight: Annotated[str, _d("Name of the straight truss symbol (in the document, or in library_path), "
+                                "such as 'Global Truss F34-300 Straight'. Its Braceworks record gives the "
+                                "piece length.")],
+    corner: Annotated[str, _d("Name of the corner symbol of the same truss family, such as 'Global Truss "
+                              "F34C21 Corner' (90 degrees), F34C20 (60), F34C22 (120), F34C23 (135). The "
+                              "path's bends must match the corner's angle.")],
+    path: Annotated[list[list[float]], _d(f"[[x, y], ...] in {_UNITS}: the centre line of the truss, at "
+                                          "least two points. Every interior point gets a corner.")],
+    z: Annotated[float, _d(f"How high to raise the truss in {_UNITS}: its underside sits at z, the "
+                            "centre line half the truss height above. Default 0.")] = 0.0,
+    position_name: Annotated[str | None, _d("Spotlight position name written on every piece, so fixtures "
+                                            "can hang on it.")] = None,
+    layer: Annotated[str | None, _d(_LAYER)] = None,
+    class_name: Annotated[str | None, _d(_CLASS)] = None,
+    library_path: Annotated[str | None, _d("Library .vwx file (vw_list_library) to import the symbols from "
+                                           "when they are not in the document yet.")] = None,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
+) -> dict:
+    """Build a truss shape (L, U, rectangle, any polyline with matching bends) from straights and corners, one chained system.
+    Each leg is filled from its start with whole straight pieces; a corner
+    piece sits at every interior point and takes its own length from both
+    legs, so legs end up shorter than the path by the leftover `gap`.
+    Pieces are linked in order (one Braceworks system), hung at z, and get the
+    position name. Use vw_insert_truss_run for a single straight run.
+    All-or-nothing; one revertible step. Returns {system, piece_length,
+    straights, corners, legs: [{pieces, length, gap, turn}], imported,
+    items: [{uuid}], class?}; check with vw_list_truss."""
+    app.require_document(document)
+    if len(path) < 2:
+        raise ToolError("path needs at least two points")
+    out = vw("insert_truss_path", straight=straight, corner=corner, path=path, z=z,
+             position_name=position_name, layer=layer, truss_system=None, library_path=library_path)
+    ops = [{"op": "created", "uuid": it["uuid"]} for it in out["items"]]
+    for name in out.get("imported") or []:
+        ops.append({"op": "resource", "name": name})
+    out = _journal(out, "vw_insert_truss_path", ops)
+    if class_name:  # second job: see vw_create_pio
+        vw("set_objects_class", uuids=[it["uuid"] for it in out["items"]], cls=class_name)
         out["class"] = class_name
     return out
 

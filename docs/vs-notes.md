@@ -140,7 +140,60 @@ menu command gets a fresh Python state (module globals don't persist).
 - `vw_switch_document` / `document=` guard worked throughout with 2027
   open beside 2026; nothing reached 2027.
 
-## Hoists and truss corners (reads 2026-11-20, VW 2026)
+## Hoists and truss corners (reads 2026-11-20; built and live 2026-11-21, VW 2026)
+
+Live 2026-11-21 on test_mcp.vwx (hoist inserted by Michael with the Hoist tool):
+
+- **The current hoist is the `BrxHoist` plug-in** (Braceworks family, like
+  `TrussItem`); 90 parameters. Inputs that stick through `SetRField` +
+  `ResetObject`: `HoistID`, `HoistName` and `SymbolUsed` (the hoist symbol),
+  `Location`, `Function` (Lights/Audio/Video/Scenery/Other), `HoistPos`
+  ("Hoist Up" / "Hoist Down"), `Capacity` (grams: 1000000 = 1 t), `ChainWt`
+  (kg/m), `HoistWt`, `Voltage`, `Speed`, `MotorHeight` (mm), `Connector`,
+  `ControlType`, `Notes`, and **`DistanceFromLow` (mm) = the hook height**:
+  `HiHook`, `HookToHook`, `ChainLength` (= hook-to-hook minus motor height)
+  derive from it after the reset. `MaxChainLength` is a dimension field in
+  document units (19999.325 written as mm was read as inches: 665 kg of
+  chain). `HiHook`, `LoHook`, `LoadTrim`, `HookToHook` ignore text writes
+  ("15 m", "15000"); trims come from a connected truss. `CreateCustomObjectN
+  ("BrxHoist", ...)` creates silently. `GetSymLoc` is the insertion point
+  (the bbox centre is offset by the symbol). The hoist symbols
+  (`Libraries/Entertainment/Rigging/Hoists/*.vwx`: Block and Fall, Dead
+  Hang, Double Reeve, Euro Standards, Single Reeve) carry a
+  **`HoistObjectData`** record (Name, Type, Manufacturer, Motor up or down,
+  Connector, Voltage, Phasing, Speed, HoistWt, ChainLength mm, ChainWt,
+  Control Type, Function, Capacity g, MotorHeight) which the Hoist tool
+  copies into the object; `vw_insert_hoists` does the same. Verified: two
+  hoists at 12 m read back 39'4.441" hook height, 1000 kg, 57.76 lb with
+  chain (same as the tool-made hoist); revert clean. Derived fields are
+  empty when read in the creating job (resets run at job end): read them
+  with `vw_list_hoists`.
+- **Truss corners.** F34 corners in the F34 library: C20 (60 degrees), C21
+  (90), C22 (120), C23 (135), C30 (3-way), C41, C55, C61, T35/T40 tees, Box.
+  `BrxTrussItemRecord` of a 2-way corner: `ItemType` "Corner", `CornerType`
+  "L_Corner", `Length` 0, `Center X` = what the corner takes from each leg
+  (C21: 355 mm, C20: 748.82), `Low` (0,0,0) = the incoming face at the
+  symbol origin, `Bottom` = the outgoing face centre (C21: (355, -355, 0);
+  C20: (374.41, -648.5, 0)); the turn angle is `atan2(By, Bx - Center X)`
+  (negative = right turn when the piece is placed with the incoming leg
+  along +x). A C21 placed at (0,0) rot 0 spans x 0..500 mm, y -355..+145:
+  the insertion point is the Low face, the outgoing leg heads -y from
+  (355, -355). A left turn uses the same piece entered through its Bottom
+  face (rotation = heading - 90, insertion at the outgoing leg's start).
+  `vw_insert_truss_path` places straights and corners this way; a U with
+  two C21 corners read back as one linked system of 7 pieces, centres on
+  the legs' centre lines (`vw_list_truss`, `vw_render_layers`), reverted.
+- **Insertion point of straights.** The F34 library straights have `Low X`
+  0: their origin is the start face, so `vw_insert_truss_run` (which assumed
+  centred pieces, as the Insert Truss tool's DJ-truss pieces were) placed
+  them half a piece late (seen in a screenshot). Both truss inserts now put
+  the record's `Low` point on the leg (`_insertion_for_low`); a symbol whose
+  origin is its centre must say so through `Low X` = -Length/2. Re-check
+  the DJ truss symbol on the sketch doc with the new rule. `z` raises the
+  piece (`Move3DObj`): the underside sits at z, the 3D centre half the
+  truss height above (245.7 in for z = 240 in with a 290 mm truss).
+
+Earlier reads (2026-11-20):
 
 - `CreateCustomObjectN("Hoist", ...)` → "plug-in 'Hoist' is not available in
   this document". The only hoist `.vso` in the app Plug-ins folder is

@@ -31,7 +31,7 @@ def test_tool_names_follow_the_verb_thing_pattern():
     assert not bad, bad
 
 
-def test_merged_tools_are_gone_and_the_count_is_52():
+def test_merged_tools_are_gone_and_the_count_is_53():
     # 2026-11-21 consolidation: plug-in parameters are records (vw_get_record /
     # vw_set_record with record omitted), a script file is vw_exec_python(path=),
     # the two library tools are vw_list_library.
@@ -39,4 +39,4 @@ def test_merged_tools_are_gone_and_the_count_is_52():
     assert not names & {"vw_get_pio_parameters", "vw_set_pio_parameters", "vw_exec_file",
                         "vw_list_library_files", "vw_list_library_resources"}
     assert {"vw_list_library", "vw_get_record", "vw_set_record", "vw_exec_python"} <= names
-    assert len(names) == 52  # 50 after the merge + vw_insert_hoists, vw_list_hoists
+    assert len(names) == 53  # 50 after the merge + hoists x2 + vw_insert_truss_path
