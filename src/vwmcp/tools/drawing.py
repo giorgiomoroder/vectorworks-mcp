@@ -318,22 +318,33 @@ def vw_insert_truss_run(
     class_name: Annotated[str | None, _d(_CLASS)] = None,
     library_path: Annotated[str | None, _d("Library .vwx path (vw_list_library) to import the symbol "
                                            "from first, when it is not in the document yet.")] = None,
+    vertical: Annotated[bool, _d("True: a tower. The pieces stand on end, stacked upward from (x, y) at "
+                                 "height z; rotation is ignored. Default False: a horizontal run.")] = False,
+    base_symbol: Annotated[str | None, _d("With vertical: a base plate symbol of the same family placed "
+                                          "under the stack, such as 'Global Truss F34 800mm Steel Plate "
+                                          "Base' (import it first).")] = None,
+    top_symbol: Annotated[str | None, _d("With vertical: a top piece (spindle, sleeve) of the same family "
+                                         "placed on top of the stack, such as 'Global Truss F34 Spindel'.")] = None,
     document: Annotated[str | None, _d(_DOCUMENT)] = None,
 ) -> dict:
-    """Place a straight run of truss pieces end to end, linked into one truss system, the way Spotlight's Insert Truss tool does.
+    """Place a straight run of truss pieces end to end, or stack them into a tower, linked into one truss system the way Spotlight's Insert Truss tool does.
     Creates `count` TrussItem objects on the symbol's length centres from
     (x, y) along `rotation`, dimensions, weight and type from the symbol's
-    Braceworks record, chained into a new truss system. Corners and towers
-    are not supported yet; for a single odd piece use vw_create_pio with
+    Braceworks record, chained into a new truss system. With vertical=True
+    the pieces are stacked upward from (x, y, z) into a tower, optionally on
+    a base plate and under a top piece. Shapes with corners are
+    vw_insert_truss_path; for a single odd piece use vw_create_pio with
     'TrussItem'. All-or-nothing; one revertible step removes the whole run
     (and the import, if any). Returns {system, piece_length, total_length,
-    imported, pieces: [{uuid, bbox}], class?}; check with vw_list_truss."""
+    vertical, imported, pieces: [{uuid, bbox}] (towers: [{uuid, symbol, z}]
+    plus total_height), class?}; check with vw_list_truss."""
     app.require_document(document)
     if count < 1:
         raise ToolError("count must be at least 1")
     out = vw("insert_truss_run", symbol=symbol, x=x, y=y, count=count, rotation=rotation,
              z=z, position_name=position_name, layer=layer, truss_system=None,
-             library_path=library_path)
+             library_path=library_path, vertical=vertical, base_symbol=base_symbol,
+             top_symbol=top_symbol)
     ops = [{"op": "created", "uuid": p["uuid"]} for p in out["pieces"]]
     if out.get("imported"):
         ops.append({"op": "resource", "name": out["imported"]})

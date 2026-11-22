@@ -10,6 +10,9 @@ Live-tested on Vectorworks 2026 (31.7). 53 tools.
 - `vw_insert_hoists` / `vw_list_hoists`: Spotlight hoists (`BrxHoist`) at
   points with ID, location, function, direction and hook height, data
   copied from the hoist symbol's record; inventory with capacities.
+- Towers: `vw_insert_truss_run(vertical=True, base_symbol=, top_symbol=)`
+  stacks a base plate, pieces stood on end and a spindle into one system.
+  `vw_insert_truss_path` takes `fit` (start, center, end) for the gap.
 - `vw_insert_truss_path`: L, U and rectangle truss shapes from straights
   and a matching corner piece, one linked system. Truss pieces are now
   placed by their record's start point: the F34 library straights are

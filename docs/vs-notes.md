@@ -193,6 +193,21 @@ Live 2026-11-21 on test_mcp.vwx (hoist inserted by Michael with the Hoist tool):
   piece (`Move3DObj`): the underside sits at z, the 3D centre half the
   truss height above (245.7 in for z = 240 in with a 290 mm truss).
 
+- **Towers.** `TrussItem` has a `Vertical` parameter, and the F34 base
+  plate ("800mm Steel Plate Base") and "Spindel" symbols carry
+  `Vertical` True in their record, but setting `Vertical` on a straight
+  piece does **not** stand it up (Michael's screenshot: pieces stacked
+  flat in the air). `vs.Set3DRot(h, 0, -90, 0, x, y, z)` about the piece's
+  own foot does, and survives `ResetObject` (seen upright in a Right
+  Isometric capture). The base plate and spindle have no `Length` in
+  `BrxTrussItemRecord`; it is in the attached **"Truss Record"** as a
+  dimension string ("6mm", "500mm"), which `_truss_record` now falls back
+  to. `vw_insert_truss_run(vertical=True, base_symbol=, top_symbol=)`
+  stacks base, straights and spindle from z, rotates the straights, chains
+  them; a 3-piece tower read back 374.25 in (9.5 m) tall, linked.
+  `vw_list_truss` centres of vertical pieces are off in x (the 3D bbox
+  includes the flat 2D part): use the z values.
+
 Earlier reads (2026-11-20):
 
 - `CreateCustomObjectN("Hoist", ...)` → "plug-in 'Hoist' is not available in

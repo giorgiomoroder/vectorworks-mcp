@@ -124,6 +124,9 @@ after and anything Spotlight overrode.
   dimension string such as "12 m"); `vw_list_hoists` is the rigging
   inventory with capacities. Hoist symbols come from the Rigging/Hoists
   libraries (`vw_list_library(query="rigging/hoists")`, `vw_import_resource`).
+- `vw_insert_truss_run(..., vertical=True, base_symbol="Global Truss F34 800mm
+  Steel Plate Base", top_symbol="Global Truss F34 Spindel")`: a tower at
+  (x, y) from z, pieces stood on end (import the three symbols first).
 - `vw_insert_truss_run(symbol, x, y, count, rotation, z, position_name)`:
   straight runs from a truss symbol, linked into a system; `vw_list_truss`
   to verify (broken chains are flagged).

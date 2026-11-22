@@ -976,8 +976,12 @@ def _truss_record(symbol):
     if BRX not in record_names(sd):
         raise ValueError("%r has no %s record; it is not a Braceworks truss symbol" % (symbol, BRX))
     f = lambda k: _str(vs.GetRField(sd, BRX, k))  # noqa: E731
+    length_mm = float(f("Length") or 0)
+    if not length_mm and "Truss Record" in record_names(sd):
+        # base plates and spindles (live 2026-11-21): Length only in the Truss Record, as "6mm"
+        length_mm = _dim_to_mm(_str(vs.GetRField(sd, "Truss Record", "Length")))
     return {"name": f("Name"), "type": f("Type"), "item_type": f("ItemType") or "Line",
-            "length_mm": float(f("Length") or 0), "height_mm": float(f("Height") or 0),
+            "length_mm": length_mm, "height_mm": float(f("Height") or 0),
             "width_mm": float(f("Width") or 0), "section": f("Section"),
             "connection": f("Connection"), "weight_kg": float(f("Weight") or 0),
             # corners (live 2026-11-21): the piece's local frame has the incoming
@@ -1001,7 +1005,7 @@ def _insertion_for_low(rec, low_pt, heading_deg):
             low_pt[1] - (lx * math.sin(r) + ly * math.cos(r)))
 
 
-def _truss_params(rec, symbol, system, prev, position_name):
+def _truss_params(rec, symbol, system, prev, position_name, vertical=False):
     params = {
         "Symbol": symbol, "Name": rec["name"], "Type": rec["type"],
         "ItemType": rec["item_type"], "CrossSection": rec["section"],
@@ -1013,6 +1017,8 @@ def _truss_params(rec, symbol, system, prev, position_name):
     }
     if rec["item_type"] == "Corner" and rec["corner_type"]:
         params["CornerType"] = rec["corner_type"]
+    if vertical:
+        params["Vertical"] = "True"  # stands the piece up on its insertion point (live 2026-11-21)
     if rec["weight_kg"]:
         params["Weight"] = "%g" % (rec["weight_kg"] * 1000)  # grams, as Insert Truss stores it
         if rec["length_mm"]:
@@ -1020,11 +1026,11 @@ def _truss_params(rec, symbol, system, prev, position_name):
     return params
 
 
-def _place_truss_item(rec, symbol, pt, rotation, z, system, prev, position_name):
+def _place_truss_item(rec, symbol, pt, rotation, z, system, prev, position_name, vertical=False):
     h = vs.CreateCustomObjectN("TrussItem", pt, rotation, False)
     if _is_nil(h):
         raise RuntimeError("TrussItem plug-in did not create a piece")
-    _write_fields(h, "TrussItem", _truss_params(rec, symbol, system, prev, position_name))
+    _write_fields(h, "TrussItem", _truss_params(rec, symbol, system, prev, position_name, vertical))
     if z:
         vs.Move3DObj(h, 0, 0, z)
     return h
@@ -1154,9 +1160,12 @@ def _next_truss_system():
 
 @_keep_selection
 def insert_truss_run(symbol, x, y, count, rotation=0.0, z=0.0, position_name=None,
-                     layer=None, truss_system=None, library_path=None):
+                     layer=None, truss_system=None, library_path=None,
+                     vertical=False, base_symbol=None, top_symbol=None):
     """Place `count` straight truss pieces end to end from (x, y), heading along
-    `rotation` degrees, centres at height z. All-or-nothing."""
+    `rotation` degrees, raised by z. vertical: stack them upward from (x, y, z)
+    instead (a tower), optionally on a base plate symbol and under a top
+    piece (spindle), each a TrussItem of its own. All-or-nothing."""
     import math
     if count < 1:
         raise ValueError("count must be at least 1")
@@ -1170,6 +1179,8 @@ def insert_truss_run(symbol, x, y, count, rotation=0.0, z=0.0, position_name=Non
     if layer:
         _activate_layer(layer)
     system = truss_system or _next_truss_system()
+    if vertical:
+        return _insert_tower(symbol, rec, x, y, count, z, position_name, system, base_symbol, top_symbol, imported)
     rad = math.radians(rotation)
     dx, dy = math.cos(rad), math.sin(rad)
     created, prev = [], ""
@@ -1188,8 +1199,44 @@ def insert_truss_run(symbol, x, y, count, rotation=0.0, z=0.0, position_name=Non
         raise
     pieces = [obj_info(h) for h in created]
     return {"document": current_document(), "system": system, "piece_length": length,
-            "total_length": length * count, "imported": imported,
+            "total_length": length * count, "imported": imported, "vertical": False,
             "pieces": [{"uuid": p["uuid"], "bbox": p["bbox"]} for p in pieces]}
+
+
+def _insert_tower(symbol, rec, x, y, count, z, position_name, system, base_symbol, top_symbol, imported):
+    """Vertical pieces stacked at (x, y) from z: base plate, `count` straights,
+    top piece; every piece's Low face sits on the previous piece's end."""
+    to_doc = _mm_to_doc()
+    stack = []
+    if base_symbol:
+        stack.append((base_symbol, _truss_record(base_symbol)))
+    stack += [(symbol, rec)] * count
+    if top_symbol:
+        stack.append((top_symbol, _truss_record(top_symbol)))
+    created, prev, level = [], "", z
+    rows = []
+    try:
+        for sym, r in stack:
+            h = _place_truss_item(r, sym, (x, y), 0.0, level, system, prev, position_name, vertical=True)
+            created.append(h)
+            if r is rec:
+                # Vertical=True is bookkeeping only; stand the piece up by rotating it
+                # -90 degrees about the y axis through its own foot (live 2026-11-21, seen
+                # by Michael). Base plates and spindles keep their own geometry.
+                vs.Set3DRot(h, 0, -90, 0, x, y, level)
+                vs.ResetObject(h)
+            prev = h_uuid(h)
+            rows.append({"uuid": prev, "symbol": sym, "z": level})
+            level += r["length_mm"] * to_doc
+    except Exception:
+        for h in created:
+            vs.DelObject(h)
+        if imported:
+            vs.DelObject(vs.GetObject(imported))
+        raise
+    return {"document": current_document(), "system": system, "piece_length": rec["length_mm"] * to_doc,
+            "total_length": rec["length_mm"] * to_doc * count, "total_height": level - z,
+            "imported": imported, "vertical": True, "pieces": rows}
 
 
 def _dim_to_doc(text):

@@ -181,7 +181,9 @@ on a throwaway doc and record findings in `docs/vs-notes.md`:
       plug-in; `vw_insert_hoists` / `vw_list_hoists` (vs-notes "Hoists and
       truss corners"). **Truss corners** (2026-11-21, live):
       `vw_insert_truss_path` places straights and the family's corner piece
-      along a polyline; towers not started.
+      along a polyline; towers = `vw_insert_truss_run(vertical=True, ...)`
+      (2026-11-21, live: pieces stood up with `Set3DRot`, the `Vertical`
+      flag alone does nothing).
 - [~] **Truss.** `vw_insert_truss_run` (live 2026-11-17): straight runs from a
       library symbol, end to end at a height, dimensions/weight from the symbol's
       `BrxTrussItemRecord`, linked via `C_START_UUID`, new TrussSystem, class in a
@@ -189,7 +191,7 @@ on a throwaway doc and record findings in `docs/vs-notes.md`:
       in chain order with totals and flags broken chains. Corners: see
       Hoists above (`vw_insert_truss_path`, 2026-11-21); the F34 library
       straights are start-based, so pieces are now placed by the record's
-      `Low` point. Towers still to do. Michael has no Braceworks licence,
+      `Low` point. Michael has no Braceworks licence,
       so the "does it calculate" check is off the list.
 - [~] **Lighting fixtures.** `vw_insert_lighting_devices` (live 2026-11-17): fixture
       symbol → `vs.Symbol` + "Convert to Instrument" menu command → real Lighting

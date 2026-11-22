@@ -1090,3 +1090,55 @@ def test_truss_path_fit_center_splits_the_gap_on_each_leg(doc, fake_vs):
     with pytest.raises(ToolError):
         drawing.vw_insert_truss_path("Global Truss F34-300 Straight", "Global Truss F34C21 Corner",
                                      path=[[0, 0], [1000, 0]], fit="sideways")
+
+
+# ---- towers: vertical runs (Vertical parameter read live 2026-11-21) -------------
+
+def add_tower_parts(doc, vs):
+    # Live 2026-11-21: the base plate and spindle have no Length in their
+    # Braceworks record; it is in the "Truss Record" as a dimension string.
+    for name, length, weight in (("Global Truss F34 800mm Steel Plate Base", "6mm", 0),
+                                 ("Global Truss F34 Spindel", "500mm", 2.5)):
+        h = doc._import(name)
+        doc.symdef_records[h] = {"BrxTrussItemRecord": {
+            "Name": name.split("F34 ")[1], "Type": "F34", "ItemType": "Line",
+            "Height": "290", "Width": "290", "Section": "F34", "Connection": "F34", "Weight": str(weight),
+            "CenterBased": "True", "Vertical": "True"},
+            "Truss Record": {"Model Name": name.split("F34 ")[1], "Length": length}}
+    PIO_FIELDS["TrussItem"] = PIO_FIELDS["TrussItem"] + ["Vertical"]
+    doc.rot3d = []
+    vs.Set3DRot = lambda h, ax, ay, az, x, y, z: doc.rot3d.append((h, ax, ay, az, x, y, z))
+
+
+def test_vertical_truss_run_stacks_pieces_between_base_and_top(doc, fake_vs):
+    add_truss_symbol(doc, fake_vs)
+    add_tower_parts(doc, fake_vs)
+    out = drawing.vw_insert_truss_run("Global Truss F34-300 Straight", 100, 50, 3, vertical=True,
+                                      base_symbol="Global Truss F34 800mm Steel Plate Base",
+                                      top_symbol="Global Truss F34 Spindel", position_name="TOWER SL")
+    assert out["vertical"] is True and len(out["pieces"]) == 5
+    assert out["total_height"] == pytest.approx((6 + 3 * 3000 + 500) / 25.4, abs=0.01)
+    items = truss_items(doc)
+    assert [o["fields"]["Symbol"].split("F34")[1] for o in items] == [" 800mm Steel Plate Base", "-300 Straight",
+                                                                        "-300 Straight", "-300 Straight", " Spindel"]
+    assert all(o["x"] == 100 and o["y"] == 50 and o["fields"]["Vertical"] == "True" for o in items)
+    base_h, piece_h = 6 / 25.4, 3000 / 25.4
+    assert [round(o["z"], 3) for o in items] == [round(v, 3) for v in (0, base_h, base_h + piece_h, base_h + 2 * piece_h, base_h + 3 * piece_h)]
+    chain = [o["fields"]["C_START_UUID"] for o in items]
+    assert chain[0] == "" and chain[1:] == [o["uuid"] for o in items[:-1]]
+    assert all(o["fields"]["PositionName"] == "TOWER SL" and o["fields"]["TrussSystem"] == "T0" for o in items)
+    # the straights are stood up by a 3D rotation about their own foot (Vertical alone does nothing)
+    handles = [h for h, o in doc.objects.items() if o["pio"] == "TrussItem"]
+    assert doc.rot3d == [(handles[i], 0, -90, 0, 100, 50, pytest.approx(base_h + (i - 1) * piece_h)) for i in (1, 2, 3)]
+    generic.vw_revert_last()
+    assert truss_items(doc) == []
+
+
+def test_vertical_truss_run_without_base_starts_at_z(doc, fake_vs):
+    add_truss_symbol(doc, fake_vs)
+    fake_vs.Set3DRot = lambda *a: None
+    out = drawing.vw_insert_truss_run("Global Truss F34-300 Straight", 0, 0, 2, vertical=True, z=10)
+    items = truss_items(doc)
+    assert [round(o["z"], 2) for o in items] == [10, round(10 + 3000 / 25.4, 2)]
+    assert out["total_height"] == pytest.approx(2 * 3000 / 25.4, abs=0.01)
+    assert out["pieces"][0]["z"] == 10
