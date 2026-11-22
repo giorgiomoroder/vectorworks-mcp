@@ -148,6 +148,13 @@ uv run vwmcp              # stdio server
 uv build                  # wheel must contain vwmcp/_plugin/vwmcp_bridge.py
 ```
 
+- Tool definitions are graded by Glama (TDQS). Before a push that touches a
+  tool: `uvx tdqs lint --command "uv run --project . vwmcp" --fail-on never`
+  (deterministic, no key; 2026-11-21: 0 errors, 3 heuristic warnings).
+  `tests/test_tool_definitions.py` enforces a description on every parameter
+  (`Annotated[..., Field(description=...)]`), 80+ character tool
+  descriptions and the `vw_<verb>_<thing>` naming. The .mcpb manifest shows
+  only each docstring's first sentence: keep it self-contained.
 - TDD for server-side logic (protocol, trigger, journal, verification, reports).
   Code that runs inside Vectorworks is validated **live** instead (a fake `vs`
   only encodes our assumptions); record findings in `docs/vs-notes.md`.
