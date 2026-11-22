@@ -28,8 +28,9 @@ _DOCUMENT = ("Name of the document this call may change, as listed by vw_list_do
              "If given and another document is in front, nothing changes and the call fails; "
              "use vw_switch_document first. Always pass it for writes.")
 _LAYER = "Design layer to place the new object(s) on, by name. Omitted: the user's active layer."
-_CLASS = ("Class to assign to the new object(s), by name (created if missing). Applied in a "
-          "second step and reported as 'class' in the result. Omitted: the active class.")
+_CLASS = ("Class to assign to the new object(s), by name; it must exist (vw_create_class or "
+          "vw_apply_class_standard first). Applied in a second job after the insert. Omitted: the "
+          "user's active class.")
 _PURPOSE = "Text for the object's Spotlight 'Purpose' field. Omitted: left empty."
 _POSITION = "Text for the object's Spotlight 'Position' field. Omitted: left empty."
 _UNITS = "document units"
@@ -357,6 +358,73 @@ def vw_list_truss(
     symbols, linked, bbox, pieces: [{uuid, symbol, length, center, class,
     layer}]}], total_pieces, total_length}."""
     return vw("list_truss", system=system, layer=layer)
+
+
+@mcp.tool(annotations=WRITE)
+def vw_insert_hoists(
+    symbol: Annotated[str, _d("Name of a hoist symbol already in the document (vw_list_symbols), such as "
+                              "'Dead Hang 1 Ton Audio' or a chain motor from the Rigging/Hoists libraries "
+                              "(vw_list_library, then vw_import_resource). It must carry a HoistObjectData record.")],
+    points: Annotated[list[list[float]], _d(f"[[x, y], ...] in {_UNITS}: one hoist per point, usually on a "
+                                            "truss run (vw_list_truss gives piece centres).")],
+    height: Annotated[str, _d("Hook height above the low point, as a dimension string: '12 m', '39\'4\"', "
+                              "'15000 mm', or a number in document units. Sets the hoist's hook-to-hook "
+                              "distance and chain length.")],
+    ids: Annotated[list[str] | None, _d("Hoist IDs, one per point, in order (motor numbers such as 'M1' or '1A'). "
+                                        "Omitted: id_prefix plus 1, 2, 3 ...")] = None,
+    id_prefix: Annotated[str, _d("Prefix for automatic hoist IDs when ids is omitted.")] = "M",
+    location: Annotated[str | None, _d("Location text shown in the hoist's data (the truss or position it "
+                                       "picks up, such as 'US TRUSS'). Omitted: blank.")] = None,
+    function: Annotated[str | None, _d("What the hoist carries: Lights, Audio, Video, Scenery, Other. Omitted: "
+                                       "the symbol's own function.")] = None,
+    hoist_pos: Annotated[Literal["up", "down"], _d("'up' (default): motor at the top, the usual chain hoist; "
+                                                   "'down': motor climbs, hangs from the load.")] = "up",
+    layer: Annotated[str | None, _d(_LAYER)] = None,
+    class_name: Annotated[str | None, _d(_CLASS)] = None,
+    notes: Annotated[str | None, _d("Notes field of every hoist.")] = None,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
+) -> dict:
+    """Place Spotlight hoists (BrxHoist plug-in objects) at points, one revertible step.
+    Each hoist gets the symbol's capacity, chain weight and length, motor
+    weight, voltage, speed and motor height (from the symbol's HoistObjectData,
+    as the Hoist tool does), its ID, location, function, direction and hook
+    height. Linking to a truss system is left to Vectorworks' own hoist
+    tools. All-or-nothing; vw_revert_last removes every hoist placed. Returns
+    {symbol, count, hoists: [{uuid, id, x, y}], class?}; the derived values
+    (hook height, chain length, weight) exist after the regeneration: read
+    them with vw_list_hoists."""
+    app.require_document(document)
+    if not points:
+        raise ToolError("points must hold at least one [x, y]")
+    if ids is not None and len(ids) != len(points):
+        raise ToolError(f"ids has {len(ids)} entries for {len(points)} points")
+    ids = ids or [f"{id_prefix}{i + 1}" for i in range(len(points))]
+    try:
+        height_mm = vw("_dim_to_mm", text=height)
+    except ToolError as e:
+        raise ToolError(f"height: {e}") from e
+    out = vw("insert_hoists", symbol=symbol, points=points, height_mm=height_mm, ids=ids,
+             location=location, function=function, hoist_pos=hoist_pos, layer=layer, notes=notes)
+    ops = [{"op": "created", "uuid": h["uuid"]} for h in out["hoists"]]
+    out = _journal(out, "vw_insert_hoists", ops)
+    if class_name:  # second job: see vw_create_pio
+        vw("set_objects_class", uuids=[h["uuid"] for h in out["hoists"]], cls=class_name)
+        out["class"] = class_name
+    return out
+
+
+@mcp.tool(annotations=READ)
+def vw_list_hoists(
+    location: Annotated[str | None, _d("Only hoists whose Location text matches, case-insensitive. "
+                                       "Omitted: all.")] = None,
+    layer: Annotated[str | None, _d("Only hoists on this design layer. Omitted: all layers.")] = None,
+) -> dict:
+    """Inventory of the hoists (BrxHoist objects) in the document for rigging paperwork.
+    Reads only. Sorted by location then ID. Returns {count, total_capacity_kg,
+    hoists: [{uuid, id, symbol, location, function, direction, capacity_kg,
+    hook_height_mm, hook_height (as Vectorworks formats it), weight_with_chain,
+    truss_system_top, truss_system_bottom, notes, class, layer, x, y}]}."""
+    return vw("list_hoists", location=location, layer=layer)
 
 
 @mcp.tool(annotations=WRITE)

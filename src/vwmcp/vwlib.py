@@ -1087,6 +1087,107 @@ def _dim_to_doc(text):
     raise ValueError("cannot read dimension %r" % t)
 
 
+def _dim_to_mm(text):
+    """A dimension string ("12 m", "39'4\"", "15000 mm", or a number in
+    document units) as millimetres."""
+    return _dim_to_doc(text) / _mm_to_doc()
+
+
+HOIST = "BrxHoist"
+HOIST_DATA = "HoistObjectData"
+
+
+def _hoist_symbol_data(symbol):
+    """The hoist symbol's HoistObjectData record (what the Hoist tool copies
+    into a new BrxHoist; read live 2026-11-21 on VW 2026)."""
+    sd = vs.GetObject(symbol)
+    if _is_nil(sd):
+        raise LookupError("no symbol %r in the document (vw_import_resource it first)" % symbol)
+    if HOIST_DATA not in record_names(sd):
+        raise ValueError("%r has no %s record; it is not a hoist symbol" % (symbol, HOIST_DATA))
+    f = lambda k: _str(vs.GetRField(sd, HOIST_DATA, k))  # noqa: E731
+    return {"Capacity": f("Capacity"), "ChainWt": f("ChainWt"), "HoistWt": f("HoistWt"),
+            "Voltage": f("Voltage"), "Phasing": f("Phasing"), "Speed": f("Speed"),
+            "MotorHeight": f("MotorHeight"), "Connector": f("Connector"),
+            "ControlType": f("Control Type"), "MaxChainLength": f("ChainLength"),
+            "Function": f("Function"), "direction": f("Motor up or down")}
+
+
+@_keep_selection
+def insert_hoists(symbol, points, height_mm, ids, location=None, function=None,
+                  hoist_pos="up", layer=None, notes=None):
+    """One BrxHoist per point (document units), hook at height_mm above the
+    low point, data copied from the symbol's HoistObjectData. All-or-nothing."""
+    data = _hoist_symbol_data(symbol)
+    if layer:
+        _activate_layer(layer)
+    created = []
+    try:
+        for (x, y), hid in zip(points, ids):
+            h = vs.CreateCustomObjectN(HOIST, (x, y), 0, False)
+            if _is_nil(h):
+                raise RuntimeError("%s plug-in did not create a hoist" % HOIST)
+            created.append(h)
+            params = {
+                "HoistID": hid, "HoistName": symbol, "SymbolUsed": symbol,
+                "Location": location or "", "Function": function or data["Function"],
+                "HoistPos": "Hoist Down" if hoist_pos == "down" else "Hoist Up",
+                "DistanceFromLow": "%g" % height_mm,
+            }
+            for k in ("Capacity", "ChainWt", "HoistWt", "Voltage", "Phasing", "Speed",
+                      "MotorHeight", "Connector", "ControlType"):
+                if data[k]:
+                    params[k] = data[k]
+            if data["MaxChainLength"]:  # a dimension field: document units (live 2026-11-21)
+                params["MaxChainLength"] = "%g" % (float(data["MaxChainLength"]) * _mm_to_doc())
+            if notes:
+                params["Notes"] = notes
+            _write_fields(h, HOIST, params)  # class: see create_pio, applied in a 2nd job
+    except Exception:
+        for h in created:
+            vs.DelObject(h)
+        raise
+    rows = []
+    for h, hid in zip(created, ids):
+        x, y = vs.GetSymLoc(h)
+        rows.append({"uuid": h_uuid(h), "id": hid, "x": x, "y": y})
+    # Derived fields (hook height, chain, weight) only exist after the reset,
+    # which runs when this job ends: read them with list_hoists.
+    return {"document": current_document(), "symbol": symbol, "count": len(rows), "hoists": rows}
+
+
+def list_hoists(location=None, layer=None):
+    """Every BrxHoist with the fields rigging paperwork needs."""
+    rows = []
+
+    def each(h):
+        if pio_name(h) != HOIST:
+            return
+        f = lambda k: _str(vs.GetRField(h, HOIST, k))  # noqa: E731
+        info = obj_info(h)
+        if layer and info["layer"] != layer:
+            return
+        if location is not None and f("Location").casefold() != location.casefold():
+            return
+        x, y = vs.GetSymLoc(h)  # the insertion point (the bbox centre is off: live 2026-11-21)
+        rows.append({
+            "uuid": info["uuid"], "id": f("HoistID"), "symbol": f("HoistName"),
+            "location": f("Location"), "function": f("Function"),
+            "direction": "down" if "Down" in f("HoistPos") else "up",
+            "capacity_kg": float(f("Capacity") or 0) / 1000.0,
+            "hook_height_mm": float(f("DistanceFromLow") or 0),
+            "hook_height": f("HiHook_formated"),
+            "weight_with_chain": f("WeightWithChain_formated"),
+            "truss_system_top": f("TrussSysTop"), "truss_system_bottom": f("TrussSysBottom"),
+            "notes": f("Notes"), "class": info["class"], "layer": info["layer"],
+            "x": x, "y": y,
+        })
+
+    vs.ForEachObject(each, "(T=86)")
+    rows.sort(key=lambda r: (r["location"], r["id"]))
+    return {"count": len(rows), "total_capacity_kg": sum(r["capacity_kg"] for r in rows), "hoists": rows}
+
+
 def list_truss(system=None, layer=None):
     """TrussItem objects grouped by TrussSystem, each run ordered along its
     C_START_UUID chain, with lengths in document units."""

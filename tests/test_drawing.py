@@ -149,6 +149,7 @@ class FakeDoc:
         v.GetLayer = lambda h: self.layers[self.objects[h]["layer"]]
         v.GetLName = lambda lh: next(n for n, hh in self.layers.items() if hh == lh)
         v.GetBBox = lambda h: ((0, 0), (1, 1))
+        v.GetSymLoc = lambda h: (self.objects[h]["x"], self.objects[h]["y"])
         v.ForEachObject = lambda fn, crit: [fn(hh) for hh in list(self.objects)]
         v.NumRecords = lambda h: 0
         v.GetParametricRecord = lambda h: ("rec", self.objects[h]["pio"]) if self.objects[h]["pio"] else 0
@@ -910,3 +911,83 @@ def test_list_library_without_a_path_searches_files_on_disk(monkeypatch):
     assert out == {"query": "truss tomcat", "count": 1,
                    "files": [{"library": "Entertainment", "folder": "Truss", "name": "Tomcat.vwx", "path": "/lib/Tomcat.vwx"}]}
     assert seen == {"query": "truss tomcat", "limit": 5}
+
+
+# ---- hoists (BrxHoist read live 2026-11-21 on VW 2026) ---------------------------
+
+HOIST_FIELDS = ["HoistID", "HoistName", "SymbolUsed", "HoistType", "Location", "HoistPos", "Function",
+                "Capacity", "ChainWt", "HoistWt", "Voltage", "Speed", "MotorHeight", "Phasing", "Connector",
+                "ControlType", "MaxChainLength", "DistanceFromLow", "HiHook_formated", "WeightWithChain",
+                "TrussSysTop", "TrussSysBottom", "Notes"]
+
+
+def add_hoist_symbol(doc, vs, name="CM Lodestar 1 Ton"):
+    h = doc._import(name)
+    doc.symdef_records = getattr(doc, "symdef_records", {})
+    doc.symdef_records[h] = {"HoistObjectData": {
+        "Name": name, "Type": "Chain Hoist", "Manufacturer": "CM", "Motor up or down": "Up",
+        "Connector": "cPOT", "Voltage": "230", "Phasing": "3", "Speed": "4", "HoistWt": "52000",
+        "ChainLength": "19999.325", "ChainWt": "1.31", "Control Type": "", "Function": "Lights",
+        "Capacity": "1000000", "MotorHeight": "152.4"}}
+    old_rec, old_rf = vs.GetName, vs.GetRField
+    vs.NumRecords = lambda hh: len(doc.symdef_records.get(hh, {}))
+    vs.GetRecord = lambda hh, i: ("symrec", hh, list(doc.symdef_records[hh])[i - 1])
+    vs.GetName = lambda hh: hh[2] if isinstance(hh, tuple) and hh[0] == "symrec" else old_rec(hh)
+    vs.GetRField = lambda hh, rec, f: (doc.symdef_records[hh][rec].get(f, "") if hh in doc.symdef_records
+                                       else old_rf(hh, rec, f))
+    vs.GetUnits = lambda: (25, 3, 2, 1.0, '"', " sq ft")  # feet-inches doc: internal inch
+    PIO_FIELDS["BrxHoist"] = HOIST_FIELDS
+    return h
+
+
+def hoists(doc):
+    return [o for o in doc.objects.values() if o["pio"] == "BrxHoist"]
+
+
+def test_insert_hoists_copies_the_symbol_data_and_sets_the_hook_height(doc, fake_vs):
+    add_hoist_symbol(doc, fake_vs)
+    out = drawing.vw_insert_hoists("CM Lodestar 1 Ton", points=[[0, 0], [120, 0], [240, 0]], height="12 m",
+                                   id_prefix="M", location="US TRUSS", class_name="Truss")
+    assert [h["id"] for h in out["hoists"]] == ["M1", "M2", "M3"] and out["count"] == 3
+    hs = hoists(doc)
+    assert [(h["x"], h["y"]) for h in hs] == [(0, 0), (120, 0), (240, 0)]
+    f = hs[0]["fields"]
+    assert f["HoistID"] == "M1" and f["HoistName"] == f["SymbolUsed"] == "CM Lodestar 1 Ton"
+    assert f["Location"] == "US TRUSS" and f["HoistPos"] == "Hoist Up" and f["Function"] == "Lights"
+    assert f["Capacity"] == "1000000" and f["ChainWt"] == "1.31" and f["HoistWt"] == "52000"
+    assert f["Voltage"] == "230" and f["Speed"] == "4" and f["MotorHeight"] == "152.4"
+    assert abs(float(f["MaxChainLength"]) - 19999.325 / 25.4) < 0.01  # document units (inches here)
+    assert f["DistanceFromLow"] == "12000"
+    assert out["hoists"][1] == {"uuid": hs[1]["uuid"], "id": "M2", "x": 120, "y": 0}
+    assert all(h["class"] == "Truss" for h in hs)
+    assert ("reset", min(h for h, o in doc.objects.items() if o["pio"] == "BrxHoist")) in doc.events
+    generic.vw_revert_last()
+    assert hoists(doc) == []
+
+
+def test_insert_hoists_explicit_ids_function_and_direction(doc, fake_vs):
+    add_hoist_symbol(doc, fake_vs)
+    out = drawing.vw_insert_hoists("CM Lodestar 1 Ton", points=[[0, 0], [50, 0]], height="39'4\"",
+                                   ids=["1A", "1B"], function="Audio", hoist_pos="down")
+    assert [h["id"] for h in out["hoists"]] == ["1A", "1B"]
+    f = hoists(doc)[0]["fields"]
+    assert f["Function"] == "Audio" and f["HoistPos"] == "Hoist Down"
+    assert abs(float(f["DistanceFromLow"]) - 11988.8) < 1
+    with pytest.raises(ToolError, match="ids"):
+        drawing.vw_insert_hoists("CM Lodestar 1 Ton", points=[[0, 0], [50, 0]], height="1 m", ids=["only one"])
+    with pytest.raises(ToolError, match="no symbol"):
+        drawing.vw_insert_hoists("Nope", points=[[0, 0]], height="1 m")
+    with pytest.raises(ToolError, match="HoistObjectData"):
+        drawing.vw_insert_hoists("Tomcat 12", points=[[0, 0]], height="1 m")
+
+
+def test_list_hoists_reads_the_inventory(doc, fake_vs):
+    add_hoist_symbol(doc, fake_vs)
+    drawing.vw_insert_hoists("CM Lodestar 1 Ton", points=[[0, 0], [120, 0]], height="12 m", location="US TRUSS")
+    out = drawing.vw_list_hoists()
+    assert out["count"] == 2 and out["total_capacity_kg"] == 2000
+    row = out["hoists"][0]
+    assert row["id"] == "M1" and row["symbol"] == "CM Lodestar 1 Ton" and row["location"] == "US TRUSS"
+    assert row["capacity_kg"] == 1000 and row["hook_height_mm"] == 12000 and row["direction"] == "up"
+    assert row["x"] == 0 and row["y"] == 0 and "uuid" in row
+    assert drawing.vw_list_hoists(location="nowhere")["count"] == 0
