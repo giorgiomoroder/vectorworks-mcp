@@ -899,3 +899,18 @@ reverted; both censuses ended at their baselines.
 - Files left behind on purpose: `~/Documents/mcp_truss_2027.vwx` (a copy of
   the 2026 test doc) and the unsaved converted tab
   `mcp_truss_2027_v2027.vwx` in Vectorworks 2027 (close without saving).
+- **398 vs 216 (Bobby Lee plot, read in a converted 2027 copy, 390 MB,
+  opened in 3.8 s):** a deep walk of every layer (FInLayer/NextObj,
+  into groups) finds 398 Lighting Devices; `ForEachObject("(PON='Lighting
+  Device')")` finds 216. The other 182 sit on **referenced layers** (names
+  `NNA#18_1 ELECTRIC`, `NNA#18_Lights`, `NNA#17_[SET] SECTION` ...: the
+  `NNA#<n>_` prefix is Vectorworks' naming for layers of a referenced
+  file), which `ForEachObject` does not walk. Lightwright's export counts
+  them. Our census is the document's own devices; a referenced-layer count
+  would need the walk (cheap enough here: one job).
+- **"Fixture ID" is gone in 2027:** the Lighting Device record of the
+  converted Bobby Lee plot has no "Fixture ID" field either (2026 had it);
+  `vw_mvr_check` reports the check as skipped. MVR summary on 2027 for the
+  same plot: 214 no_gdtf, 2 gdtf_unlinked, 106 unpatched, 34 address_shared,
+  6 address_overlap, 44 no_position, 81 position_without_object, 8
+  symbol_without_3d (same numbers as 2026 apart from Fixture ID).
