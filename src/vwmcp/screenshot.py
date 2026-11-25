@@ -254,8 +254,9 @@ def screenshot(
 ) -> tuple[Path, Window, list[dict]]:
     """Capture the document window. Also returns the other Vectorworks windows
     (dialogs, open menus) that would keep a job from running."""
-    owner = app.split(" ")[0]  # "Vectorworks 2026" owns windows as "Vectorworks 2026"
-    found = windows(owner)
+    # Windows are owned by the full app name ("Vectorworks 2026"); matching
+    # just "Vectorworks" picked the other version's window when both ran.
+    found = windows(app)
     window = pick_window(found, title)
     folder = Path(root) / "screenshots"
     out = folder / time.strftime("%Y%m%d-%H%M%S.png")

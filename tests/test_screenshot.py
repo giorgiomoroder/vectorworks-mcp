@@ -64,7 +64,10 @@ def test_screenshot_uses_app_name_as_window_owner(tmp_path):
         return [win(1, "x.vwx")]
 
     ss.screenshot(app="Vectorworks 2025", root=tmp_path, windows=windows, run=FakeRun())
-    assert seen == ["Vectorworks"]
+    # Windows are owned by the full app name ("Vectorworks 2026", "Vectorworks
+    # 2027"); matching only "Vectorworks" captured the other version's window
+    # when both ran (live 2026-11-25).
+    assert seen == ["Vectorworks 2025"]
 
 
 def test_screenshot_failure_mentions_screen_recording(tmp_path):
