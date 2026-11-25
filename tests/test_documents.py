@@ -36,6 +36,34 @@ def test_parse_windows_skips_helpers_and_duplicates():
     assert out == {"documents": ["plan.vwx"], "active": "plan.vwx"}
 
 
+def test_parse_windows_lists_hidden_document_tabs_and_picks_the_visible_one():
+    # Live 2026-11-25 (VW 2027, two document tabs): the front tab is the only
+    # visible window; the other tab and the helpers are invisible.
+    text = ("front_v2027.vwx\ttrue\n\tfalse\nVectorworks\tfalse\n\tfalse\nWindow\tfalse\n"
+            "test_mcp 2027.vwx\tfalse\nfront_v2027.vwx\tfalse\nMigration Progress\tfalse\n")
+    out = documents.parse_windows(text)
+    assert out == {"documents": ["front_v2027.vwx", "test_mcp 2027.vwx"], "active": "front_v2027.vwx"}
+    # a hidden unsaved document cannot be told from a helper window: skipped
+    assert documents.parse_windows("plan.vwx\ttrue\nUntitled 1\tfalse\n")["documents"] == ["plan.vwx"]
+
+
+def test_open_document_accepts_the_converted_copy_of_an_older_file(fake_vw, tmp_path, monkeypatch):
+    old = tmp_path / "show.vwx"
+    old.write_text("x")
+    state = {"windows": ["plan.vwx"]}
+
+    def fake(script, *args):
+        if args:
+            state["windows"].insert(0, "show_v2027.vwx")  # Vectorworks converts and renames
+            return "ok"
+        return "\n".join(state["windows"])
+
+    monkeypatch.setattr(documents, "_osascript", fake)
+    out = documents.open_document(str(old), wait=2, poll=0)
+    assert out["active"] == "show_v2027.vwx" and out["converted"] is True
+    assert "show_v2027.vwx" not in documents.load_paths()
+
+
 def test_switch_by_remembered_path(fake_vw):
     documents.remember("plan.vwx", str(fake_vw))
     listed = documents.list_documents()

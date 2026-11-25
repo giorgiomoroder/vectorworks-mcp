@@ -41,9 +41,18 @@ HELPER_WINDOWS = {"", "Window", "Fenster", "Vectorworks",
                   "About Vectorworks", "Vectorworks Preferences"}
 STATE = DEFAULT_ROOT / "document_paths.json"
 
+# Every window, visible or not: document tabs behind the front one are
+# invisible windows (live 2026-11-25 on Vectorworks 2027: the front tab is
+# visible, the others and the helper windows are not). One "name<TAB>visible"
+# line per window, front to back.
 LIST_SCRIPT = f'''
-set AppleScript's text item delimiters to linefeed
-tell application "{APP}" to return (name of every window whose visible is true) as text
+set out to ""
+tell application "{APP}"
+  repeat with w in every window
+    set out to out & (name of w) & tab & (visible of w) & linefeed
+  end repeat
+end tell
+return out
 '''
 
 OPEN_SCRIPT = f'''
@@ -68,15 +77,26 @@ def _osascript(script: str, *args: str) -> str:
 
 
 def parse_windows(text: str) -> dict:
-    """Window names (front to back) -> {"documents": [...], "active": name}."""
-    docs = []
-    for name in text.splitlines():
+    """Window lines (front to back, "name" or "name<TAB>true|false") ->
+    {"documents": [...], "active": name}. Hidden document tabs are listed
+    too; the active document is the first visible one. An unsaved document
+    ("Untitled 1") counts only while it is in front: hidden, it cannot be
+    told from a helper window."""
+    docs, active = [], None
+    for line in text.splitlines():
+        name, _, vis = line.partition("\t")
         name = name.strip()
-        if name not in HELPER_WINDOWS and name not in docs:
-            docs.append(name)
+        visible = vis.strip().lower() != "false"
+        if name in HELPER_WINDOWS or name in docs:
+            continue
+        if not visible and not name.lower().endswith(".vwx"):
+            continue
+        docs.append(name)
+        if visible and active is None:
+            active = name
     if not docs:
         raise DocumentsError("No document is open in Vectorworks.")
-    return {"documents": docs, "active": docs[0]}
+    return {"documents": docs, "active": active or docs[0]}
 
 
 def load_paths() -> dict:
@@ -130,13 +150,22 @@ def open_document(path: str, wait: float = 60.0, poll: float = 1.0) -> dict:
         return out
     _osascript(OPEN_SCRIPT, str(p))
     t0 = time.monotonic()
+    converted = p.stem + "_v"  # an older file opens as "<name>_v2027.vwx", unsaved
     while True:
         after = parse_windows(_osascript(LIST_SCRIPT))
         target = _match(p.name, after["documents"])
+        if target is None:
+            target = next((d for d in after["documents"] if d.startswith(converted)), None)
         if target is not None and after["active"] == target:
-            remember(target, str(p))
-            return {"active": target, "opened": True, "documents": after["documents"],
-                    "seconds": round(time.monotonic() - t0, 1)}
+            out = {"active": target, "opened": True, "documents": after["documents"],
+                   "seconds": round(time.monotonic() - t0, 1)}
+            if target == p.name:
+                remember(target, str(p))
+            else:
+                out["converted"] = True
+                out["note"] = (f"{p.name} was saved by an older Vectorworks; this is a converted, unsaved "
+                               f"copy named {target!r}. Save As in Vectorworks to keep it.")
+            return out
         if time.monotonic() - t0 > wait:
             raise DocumentsError(
                 f"Asked Vectorworks to open {p.name!r}; after {wait:.0f} s the front document is "
