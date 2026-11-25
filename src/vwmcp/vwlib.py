@@ -847,6 +847,7 @@ def import_resource(path, name, type_code=16, new_name=None):
         raise LookupError("%r is not in %s (has %d resources of type %d)"
                           % (name, path, n, type_code))
     existing = vs.GetObject(name)
+    before = _symdef_names()
     tmp = None
     if not _is_nil(existing):  # importing a copy under new_name: park the local one
         tmp = name + "__vwmcp_tmp"
@@ -864,8 +865,23 @@ def import_resource(path, name, type_code=16, new_name=None):
     finally:
         if tmp is not None:
             vs.SetName(existing, name)
-    return {"document": current_document(), "name": _str(vs.GetName(h)),
-            "type_code": vs.GetTypeN(h)}
+    final = _str(vs.GetName(h))
+    # Nested symbols (a hoist's hook parts, a fixture's clamp) arrive with the
+    # import and stay behind when the main symbol is deleted (live 2026-11-25).
+    also = sorted(n for n in _symdef_names() - before if n != final)
+    return {"document": current_document(), "name": final,
+            "type_code": vs.GetTypeN(h), "also": also}
+
+
+def _symdef_names():
+    return {s["name"] for s in list_symbols(limit=10 ** 7)}
+
+
+def _delete_resources(names):
+    for n in names:
+        h = vs.GetObject(n)
+        if not _is_nil(h):
+            vs.DelObject(h)
 
 
 # ---- plug-in objects --------------------------------------------------------------
@@ -1049,10 +1065,12 @@ def insert_truss_path(straight, corner, path, z=0.0, position_name=None, layer=N
         raise ValueError("path needs at least two points")
     if fit not in ("start", "center", "end"):
         raise ValueError("fit must be start, center or end")
-    imported = []
+    imported, also = [], []
     for sym in (straight, corner):
         if _is_nil(vs.GetObject(sym)) and library_path:
-            imported.append(import_resource(library_path, sym)["name"])
+            r = import_resource(library_path, sym)
+            imported.append(r["name"])
+            also.extend(r["also"])
     srec, crec = _truss_record(straight), _truss_record(corner)
     if srec["length_mm"] <= 0:
         raise ValueError("%s on %r has no Length" % (BRX, straight))
@@ -1134,12 +1152,11 @@ def insert_truss_path(straight, corner, path, z=0.0, position_name=None, layer=N
     except Exception:
         for h in created:
             vs.DelObject(h)
-        for name in imported:
-            vs.DelObject(vs.GetObject(name))
+        _delete_resources(imported + also)
         raise
     return {"document": current_document(), "system": system, "piece_length": piece,
             "straights": sum(leg["pieces"] for leg in out_legs), "corners": len(turns),
-            "legs": out_legs, "imported": imported,
+            "legs": out_legs, "imported": imported, "imported_also": also,
             "items": [{"uuid": h_uuid(h)} for h in created]}
 
 
@@ -1169,9 +1186,10 @@ def insert_truss_run(symbol, x, y, count, rotation=0.0, z=0.0, position_name=Non
     import math
     if count < 1:
         raise ValueError("count must be at least 1")
-    imported = None
+    imported, also = None, []
     if _is_nil(vs.GetObject(symbol)) and library_path:
-        imported = import_resource(library_path, symbol)["name"]
+        r = import_resource(library_path, symbol)
+        imported, also = r["name"], r["also"]
     rec = _truss_record(symbol)
     if rec["length_mm"] <= 0:
         raise ValueError("%s on %r has no Length" % (BRX, symbol))
@@ -1180,7 +1198,8 @@ def insert_truss_run(symbol, x, y, count, rotation=0.0, z=0.0, position_name=Non
         _activate_layer(layer)
     system = truss_system or _next_truss_system()
     if vertical:
-        return _insert_tower(symbol, rec, x, y, count, z, position_name, system, base_symbol, top_symbol, imported)
+        return _insert_tower(symbol, rec, x, y, count, z, position_name, system, base_symbol, top_symbol,
+                             imported, also)
     rad = math.radians(rotation)
     dx, dy = math.cos(rad), math.sin(rad)
     created, prev = [], ""
@@ -1194,16 +1213,16 @@ def insert_truss_run(symbol, x, y, count, rotation=0.0, z=0.0, position_name=Non
     except Exception:
         for h in created:
             vs.DelObject(h)
-        if imported:
-            vs.DelObject(vs.GetObject(imported))
+        _delete_resources(([imported] if imported else []) + also)
         raise
     pieces = [obj_info(h) for h in created]
     return {"document": current_document(), "system": system, "piece_length": length,
-            "total_length": length * count, "imported": imported, "vertical": False,
+            "total_length": length * count, "imported": imported, "imported_also": also, "vertical": False,
             "pieces": [{"uuid": p["uuid"], "bbox": p["bbox"]} for p in pieces]}
 
 
-def _insert_tower(symbol, rec, x, y, count, z, position_name, system, base_symbol, top_symbol, imported):
+def _insert_tower(symbol, rec, x, y, count, z, position_name, system, base_symbol, top_symbol, imported,
+                  also=()):
     """Vertical pieces stacked at (x, y) from z: base plate, `count` straights,
     top piece; every piece's Low face sits on the previous piece's end."""
     to_doc = _mm_to_doc()
@@ -1238,12 +1257,11 @@ def _insert_tower(symbol, rec, x, y, count, z, position_name, system, base_symbo
     except Exception:
         for h in created:
             vs.DelObject(h)
-        if imported:
-            vs.DelObject(vs.GetObject(imported))
+        _delete_resources(([imported] if imported else []) + list(also))
         raise
     return {"document": current_document(), "system": system, "piece_length": rec["length_mm"] * to_doc,
             "total_length": rec["length_mm"] * to_doc * count, "total_height": level - z,
-            "imported": imported, "vertical": True, "pieces": rows}
+            "imported": imported, "imported_also": list(also), "vertical": True, "pieces": rows}
 
 
 def _dim_to_doc(text):
@@ -1499,9 +1517,10 @@ def insert_lighting_devices(symbol, x, y, count, spacing=0.0, rotation=0.0, z=No
     import math
     if count < 1:
         raise ValueError("count must be at least 1")
-    imported = None
+    imported, also = None, []
     if _is_nil(vs.GetObject(symbol)) and library_path:
-        imported = import_resource(library_path, symbol)["name"]
+        r = import_resource(library_path, symbol)
+        imported, also = r["name"], r["also"]
     if _is_nil(vs.GetObject(symbol)):
         raise LookupError("no symbol %r in the document (vw_import_resource it first)" % symbol)
     if z is None and position:
@@ -1547,12 +1566,11 @@ def insert_lighting_devices(symbol, x, y, count, spacing=0.0, rotation=0.0, z=No
         for h in placed:
             if not _is_nil(h):
                 vs.DelObject(h)
-        if imported:
-            vs.DelObject(vs.GetObject(imported))
+        _delete_resources(([imported] if imported else []) + also)
         _restore_selection(previous)
         raise
     _restore_selection(previous)
-    return {"document": current_document(), "imported": imported, "z": z,
+    return {"document": current_document(), "imported": imported, "imported_also": also, "z": z,
             "devices": [{"uuid": h_uuid(h), "unit": _str(vs.GetRField(h, LD, "Unit Number")),
                          "inst_type": _str(vs.GetRField(h, LD, "Inst Type"))} for h in devices]}
 

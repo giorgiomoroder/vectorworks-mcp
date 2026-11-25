@@ -18,6 +18,16 @@ def _journal(result: dict, tool: str, ops: list[dict] | None) -> dict:
     return result
 
 
+def _resource_ops(out: dict) -> list[dict]:
+    """Revert ops for the symbols a helper imported: the ones asked for
+    (`imported`, a name or a list) first, then the nested symbols that came
+    along (`imported_also`), so the revert deletes parents before parts."""
+    main = out.get("imported") or []
+    if isinstance(main, str):
+        main = [main]
+    return [{"op": "resource", "name": n} for n in list(main) + (out.get("imported_also") or [])]
+
+
 def _d(text: str) -> Any:
     """A fresh pydantic Field carrying a parameter description (the MCP schema
     takes descriptions from Annotated metadata only, not from docstrings)."""
@@ -88,7 +98,8 @@ def vw_import_resource(
     Returns {name, type_code} with the name as it exists in the document."""
     app.require_document(document)
     out = vw("import_resource", path=path, name=name, type_code=type_code, new_name=new_name)
-    return _journal(out, "vw_import_resource", [{"op": "resource", "name": out["name"]}])
+    ops = [{"op": "resource", "name": n} for n in [out["name"]] + (out.get("also") or [])]
+    return _journal(out, "vw_import_resource", ops)
 
 
 @mcp.tool(annotations=WRITE)
@@ -347,8 +358,7 @@ def vw_insert_truss_run(
              library_path=library_path, vertical=vertical, base_symbol=base_symbol,
              top_symbol=top_symbol)
     ops = [{"op": "created", "uuid": p["uuid"]} for p in out["pieces"]]
-    if out.get("imported"):
-        ops.append({"op": "resource", "name": out["imported"]})
+    ops += _resource_ops(out)
     out = _journal(out, "vw_insert_truss_run", ops)
     if class_name:  # second job: see vw_create_pio
         vw("set_objects_class", uuids=[p["uuid"] for p in out["pieces"]], cls=class_name)
@@ -397,8 +407,7 @@ def vw_insert_truss_path(
     out = vw("insert_truss_path", straight=straight, corner=corner, path=path, z=z,
              position_name=position_name, layer=layer, truss_system=None, library_path=library_path, fit=fit)
     ops = [{"op": "created", "uuid": it["uuid"]} for it in out["items"]]
-    for name in out.get("imported") or []:
-        ops.append({"op": "resource", "name": name})
+    ops += _resource_ops(out)
     out = _journal(out, "vw_insert_truss_path", ops)
     if class_name:  # second job: see vw_create_pio
         vw("set_objects_class", uuids=[it["uuid"] for it in out["items"]], cls=class_name)
@@ -536,8 +545,7 @@ def vw_insert_lighting_devices(
              unit_step=unit_step, channel=channel, channel_step=channel_step,
              purpose=purpose, layer=layer, library_path=library_path)
     ops = [{"op": "created", "uuid": d["uuid"]} for d in out["devices"]]
-    if out.get("imported"):
-        ops.append({"op": "resource", "name": out["imported"]})
+    ops += _resource_ops(out)
     out = _journal(out, "vw_insert_lighting_devices", ops)
     uuids = [d["uuid"] for d in out["devices"]]
     if class_name:  # second job: see vw_create_pio

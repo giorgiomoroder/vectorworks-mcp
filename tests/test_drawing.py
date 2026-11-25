@@ -149,6 +149,7 @@ class FakeDoc:
         self.events = []
         self.next = 100
         self.selected = set()
+        self.library_parts = {}
         v = vs
         v.GetFName = lambda: "Plot.vwx"
         # selection (insert helpers save and restore it)
@@ -202,6 +203,9 @@ class FakeDoc:
         v.BuildResourceListN = lambda t, path: ((t, path), len(self.library[path]))
         v.GetNameFromResourceList = lambda lid, i: self.library[lid[1]][i - 1]
         v.ImportResourceToCurrentFile = lambda lid, i: self._import(self.library[lid[1]][i - 1])
+        v.FSymDef = lambda: next(iter(self.resources.values()), 0)
+        v.NextSymDef = lambda h: next((hh for hh in list(self.resources.values())[list(self.resources.values()).index(h) + 1:]), 0)
+        v.FInFolder = lambda h: 0
         v.SetName = lambda h, n: self._rename(h, n)
         # PIO creation
         v.CreateCustomObjectN = lambda name, pt, rot, pref: self._create(86, pio=name, x=pt[0], y=pt[1]) if name in PIO_FIELDS else 0
@@ -262,6 +266,9 @@ class FakeDoc:
         h = self.next
         self.next += 1
         self.resources[name] = h
+        for part in self.library_parts.get(name, []):  # nested symbols travel with it
+            self.resources[part] = self.next
+            self.next += 1
         return h
 
     def _rename(self, h, n):
@@ -393,7 +400,7 @@ def test_library_resources_and_import(doc, monkeypatch):
     with pytest.raises(ToolError, match="no file"):
         drawing.vw_list_library(path="/nope.vwx")
     imp = drawing.vw_import_resource("/lib/Truss.vwx", "Tomcat 20")
-    assert imp == {"name": "Tomcat 20", "type_code": 16} and "Tomcat 20" in doc.resources
+    assert imp == {"name": "Tomcat 20", "type_code": 16, "also": []} and "Tomcat 20" in doc.resources
     with pytest.raises(ToolError, match="already in the document"):
         drawing.vw_import_resource("/lib/Truss.vwx", "Tomcat 12")
     copy = drawing.vw_import_resource("/lib/Truss.vwx", "Tomcat 12", new_name="Tomcat 12 (lib)")
@@ -453,6 +460,21 @@ def test_truss_run_picks_next_free_system(doc, fake_vs):
     add_truss_symbol(doc, fake_vs)
     drawing.vw_insert_truss_run("Global Truss F34-300 Straight", 0, 0, 1)
     assert drawing.vw_insert_truss_run("Global Truss F34-300 Straight", 0, 500, 1)["system"] == "T1"
+
+
+def test_import_resource_reverts_nested_symbols_that_came_along(doc, monkeypatch):
+    # Live 2026-11-25 (VW 2027): importing "Dead Hang 1 Ton Lights" also brought
+    # "Hoist Machine Hook" and "Hoist Machine Hook Collar"; the revert left them.
+    import os
+    monkeypatch.setattr(os.path, "isfile", lambda p: p in doc.library)
+    doc.library["/lib/Hoists.vwx"] = ["Dead Hang 1 Ton Lights"]
+    doc.library_parts["Dead Hang 1 Ton Lights"] = ["Hoist Machine Hook", "Hoist Machine Hook Collar"]
+    imp = drawing.vw_import_resource("/lib/Hoists.vwx", "Dead Hang 1 Ton Lights")
+    assert imp["also"] == ["Hoist Machine Hook", "Hoist Machine Hook Collar"]
+    assert "Hoist Machine Hook" in doc.resources
+    out = generic.vw_revert_last()
+    assert out["deleted"] == 3
+    assert not any(n.startswith("Hoist") or n.startswith("Dead") for n in doc.resources)
 
 
 def test_truss_run_imports_when_given_library_path(doc, fake_vs, monkeypatch):

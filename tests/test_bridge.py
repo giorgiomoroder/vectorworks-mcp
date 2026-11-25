@@ -175,6 +175,9 @@ def test_check_args_catches_wrong_types():
     assert "got text" in bridge.check_args("I", ("7",))
     assert "one tuple" in bridge.check_args("C", (1, 2, 3))
     assert bridge.check_args("C", ((1, 2, 3),)) is None
+    assert bridge.check_args("C", (7,)) is None  # colour index: SetClPenFore(name, RGBToColorIndex(...))
+    assert bridge.check_args("SC", ("Class", 7)) is None
+    assert "one tuple" in bridge.check_args("SC", ("Class", True))
     assert bridge.check_args("I", ((1, 2),)) is not None  # a tuple for one integer
     assert "callable" in bridge.check_args("FS", ("x", "T=1"))
 

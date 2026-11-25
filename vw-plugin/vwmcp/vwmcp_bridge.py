@@ -128,8 +128,13 @@ def check_args(codes, args):
                 k += 1
                 continue
             if c == "C":
-                return ("parameter %d (COLOR) must be one tuple (r, g, b); loose numbers are "
-                        "ignored silently by Vectorworks" % pos)
+                one_each = (n - i) == (len(codes) - k)  # one argument left per parameter
+                if i < n and one_each and isinstance(args[i], _NUMBER) and not isinstance(args[i], bool):
+                    i += 1  # a colour index (RGBToColorIndex); live on VW 2026 and 2027
+                    k += 1
+                    continue
+                return ("parameter %d (COLOR) must be one tuple (r, g, b) or one colour index; "
+                        "loose r, g, b numbers are ignored silently by Vectorworks" % pos)
             w = _WIDTH[c]
             loose = args[i:i + w]
             if len(loose) < w or not all(isinstance(a, _NUMBER) for a in loose):
