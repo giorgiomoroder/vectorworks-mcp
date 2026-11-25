@@ -35,6 +35,10 @@ or reload it from a job as described in docs/vs-notes.md.
 - `vw_screenshot`: the Script Errors alert is recognised at the modal level
   too and carries the text of Vectorworks' "Error Output" file; tool-tip
   sized floating windows are no longer listed as in front.
+- The job trigger refuses at once while the Script Errors alert is up,
+  quoting the Error Output text, instead of waiting out a 15 s claim.
+- `vw_set_view(fit=True)` fits every object, as described; it used to fit
+  the selection when there was one.
 - `vw_mvr_check`: `gdtf_unlinked` for a GDTF name typed into the field
   without a linked fixture type (writing the field links nothing; only the
   Object Info palette's GDTF chooser does).
