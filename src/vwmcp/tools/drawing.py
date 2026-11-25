@@ -14,6 +14,7 @@ from vwmcp.app import READ, WRITE, mcp, vw
 
 def _journal(result: dict, tool: str, ops: list[dict] | None) -> dict:
     app.get_journal().record(result.pop("document"), tool, ops)
+    app.refresh_objects([o["uuid"] for o in ops or () if o.get("op") == "created"])
     return result
 
 

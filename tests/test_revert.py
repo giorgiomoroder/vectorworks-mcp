@@ -26,6 +26,8 @@ class FakeVW:
             return [{"uuid": "ld-1", "Channel": "101"}]
         if fn == "current_document":
             return self.document
+        if fn == "refresh_objects":
+            return {"reset": 0}
         if fn == "revert":
             return {"document": self.document, "reverted": len(kw["ops"])}
         raise AssertionError(fn)

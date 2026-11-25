@@ -33,6 +33,7 @@ class FakeVW:
             "set_view": lambda: {"view": kw["view"], "fit": kw["fit"]},
             "set_objects_class": lambda: {**doc, "before": ["None"] * len(kw["uuids"])},
             "current_document": lambda: self.document,
+            "refresh_objects": lambda: {"reset": len(kw["uuids"])},
             "revert": lambda: {**doc, "restored": 0, "deleted": 0, "moved": 0, "missing": []},
         }
         return canned[fn]()
@@ -51,6 +52,26 @@ def last_revert_ops(fake):
     fn, kw = fake.calls[-1]
     assert fn == "revert"
     return kw["ops"]
+
+
+def test_create_pio_refreshes_the_new_object_in_a_follow_up_job(fake):
+    # Live 2026-11-25 (VW 2027): a plug-in object made by a job is not painted
+    # until a ResetObject in a later job, so every creating write ends with one.
+    drawing.vw_create_pio("Stage Deck", 0, 0)
+    assert ("refresh_objects", {"uuids": ["pio-1"]}) in fake.calls
+    assert fake.calls.index(("refresh_objects", {"uuids": ["pio-1"]})) > 0
+
+
+def test_refresh_failure_does_not_fail_the_write(fake, monkeypatch):
+    def fake_vw(fn, **kw):
+        if fn == "refresh_objects":
+            raise ToolError("Vectorworks did not answer")
+        return fake(fn, **kw)
+
+    for mod in (app, generic, drawing):
+        monkeypatch.setattr(mod, "vw", fake_vw)
+    out = drawing.vw_create_pio("Stage Deck", 0, 0)
+    assert out["uuid"] == "pio-1"
 
 
 def test_import_resource_reverts_by_name(fake):

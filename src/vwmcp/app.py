@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextvars
 import functools
+import logging
 from importlib import resources
 from pathlib import Path
 
@@ -49,6 +50,8 @@ document via the "MCP Run Job" menu command.
   Vectorworks: use it to check drawn results, or to see a blocking dialog
   when other tools time out.
 """
+
+log = logging.getLogger(__name__)
 
 mcp = MCPServer("vectorworks", instructions=INSTRUCTIONS)
 
@@ -105,6 +108,19 @@ def _doc_key(name: str) -> str:
     if name.lower().endswith(".vwx"):
         name = name[:-4]
     return name.casefold()
+
+
+def refresh_objects(uuids: list[str]) -> None:
+    """Follow-up job after a write created objects: reset the new plug-in
+    objects and repaint, so they show on screen (VW 2027 leaves a plug-in
+    object created by a job unpainted until a later reset, live 2026-11-25).
+    A repaint problem never fails a write that already succeeded."""
+    if not uuids:
+        return
+    try:
+        vw("refresh_objects", uuids=list(uuids))
+    except ToolError as e:
+        log.warning("refresh after write skipped: %s", e)
 
 
 def require_document(document: str | None) -> None:

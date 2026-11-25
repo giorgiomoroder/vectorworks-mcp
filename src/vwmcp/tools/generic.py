@@ -231,6 +231,8 @@ def _exec_python(code: str, modifies_document: bool, timeout: float | None,
         out["document"], "vw_exec_python",
         [{"op": "created", "uuid": u} for u in created] or None,
     )
+    if out.get("error") is None:
+        app.refresh_objects(created)
     result = {
         "ok": out.get("error") is None,
         "value": out.get("value"),
@@ -729,6 +731,7 @@ def vw_insert_symbol(
     app.get_journal().record(
         info.pop("document"), "vw_insert_symbol", [{"op": "created", "uuid": info["uuid"]}]
     )
+    app.refresh_objects([info["uuid"]])
     return info
 
 

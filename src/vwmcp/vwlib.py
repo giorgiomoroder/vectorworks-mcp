@@ -1626,6 +1626,21 @@ def insert_stage_decks(width, depth, height, x, y, columns=1, rows=1, rotation=0
             "decks": [{"uuid": h_uuid(h)} for h in created]}
 
 
+def refresh_objects(uuids):
+    """Reset new plug-in objects and repaint. Live 2026-11-25 (VW 2027): a
+    plug-in object created by a job has its geometry at the end of that job
+    but is not painted until a ResetObject in a LATER job; ReDrawAll alone in
+    a later job does not paint it either. Missing objects are skipped."""
+    n = 0
+    for u in uuids:
+        h = vs.GetObjectByUuid(u)
+        if not _is_nil(h) and vs.GetTypeN(h) == 86:
+            vs.ResetObject(h)
+            n += 1
+    vs.ReDrawAll()
+    return {"reset": n}
+
+
 def object_extents(uuids):
     """3D centre and size per object (a second job after creation: a new
     plug-in object has no geometry until the creating job ends)."""
