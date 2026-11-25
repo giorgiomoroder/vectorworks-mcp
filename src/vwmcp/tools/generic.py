@@ -331,6 +331,31 @@ def vw_switch_document(
     return out
 
 
+@mcp.tool(annotations=WRITE)
+def vw_open_document(
+    path: Annotated[str, Field(description=(
+        "Absolute path of the .vwx file to open. A file that is already open is just brought "
+        "to the front."))],
+    wait: Annotated[float, Field(description=(
+        "Seconds to wait for the document window to appear in front (large files and files "
+        "saved by an older Vectorworks take longer: they are converted on open). Default 60."))] = 60.0,
+) -> dict:
+    """Open a Vectorworks document from disk and wait until it is the front document.
+
+    Uses the same Apple Event as vw_switch_document; nothing runs inside
+    Vectorworks and nothing is saved. A file from an older Vectorworks is
+    converted in memory on open (it stays unsaved until the user saves it).
+    Other open documents stay open. Returns {active, opened, documents,
+    seconds}; fails with what is in front when the window does not appear."""
+    _remember_active()
+    try:
+        out = documents.open_document(path, wait=wait)
+    except documents.DocumentsError as e:
+        raise ToolError(str(e)) from e
+    _remember_active()
+    return out
+
+
 @mcp.tool(annotations=READ)
 def vw_export_geometry(
     layer: Annotated[str | None, Field(description=(

@@ -110,6 +110,41 @@ def _match(name: str, docs: list[str]) -> str | None:
     return next((d for d in docs if d.rsplit(".", 1)[0] == name.rsplit(".", 1)[0]), None)
 
 
+def open_document(path: str, wait: float = 60.0, poll: float = 1.0) -> dict:
+    """Open a .vwx file that is not open yet (`open POSIX file`, the same
+    Apple Event switch_document uses) and wait until its window is in front.
+    A file saved by an older Vectorworks is converted on open (the 2027
+    "Migration Progress" window); nothing is saved. Returns {active, opened,
+    documents, seconds}."""
+    import time
+    p = Path(path).expanduser()
+    if not p.is_absolute() or p.suffix.lower() != ".vwx":
+        raise DocumentsError(f"{path!r} is not an absolute path to a .vwx file.")
+    if not p.exists():
+        raise DocumentsError(f"{p} does not exist.")
+    before = list_documents()
+    already = _match(p.name, before["documents"])
+    if already is not None:
+        out = switch_document(str(p))
+        out["opened"] = False
+        return out
+    _osascript(OPEN_SCRIPT, str(p))
+    t0 = time.monotonic()
+    while True:
+        after = parse_windows(_osascript(LIST_SCRIPT))
+        target = _match(p.name, after["documents"])
+        if target is not None and after["active"] == target:
+            remember(target, str(p))
+            return {"active": target, "opened": True, "documents": after["documents"],
+                    "seconds": round(time.monotonic() - t0, 1)}
+        if time.monotonic() - t0 > wait:
+            raise DocumentsError(
+                f"Asked Vectorworks to open {p.name!r}; after {wait:.0f} s the front document is "
+                f"{after['active']!r} (open: {', '.join(after['documents']) or 'none'}). A dialog may be "
+                "waiting in Vectorworks (vw_screenshot shows it).")
+        time.sleep(poll)
+
+
 def switch_document(name_or_path: str) -> dict:
     """Bring an open document to the front, by name (as listed) or by path.
     Verified afterwards by the front window's name."""

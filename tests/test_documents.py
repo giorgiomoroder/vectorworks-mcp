@@ -13,9 +13,10 @@ def fake_vw(monkeypatch, tmp_path):
     state = {"windows": ["Ohne Titel 3", "", "Window", "plan.vwx", "Ohne Titel 3"]}
 
     def fake(script, *args):
-        if args:  # open <path>
+        if args:  # open <path>: an open document comes to the front, a closed file opens
             name = args[0].rsplit("/", 1)[1]
-            state["windows"].remove(name)
+            if name in state["windows"]:
+                state["windows"].remove(name)
             state["windows"].insert(0, name)
             return "ok"
         return "\n".join(state["windows"])
@@ -50,6 +51,24 @@ def test_switch_by_path_and_errors(fake_vw):
         documents.switch_document("Ohne Titel 3")
     with pytest.raises(documents.DocumentsError, match="not open"):
         documents.switch_document("nope")
+
+
+def test_open_document_opens_a_closed_file_and_remembers_its_path(fake_vw, tmp_path):
+    other = tmp_path / "show.vwx"
+    other.write_text("x")
+    out = documents.open_document(str(other), wait=2, poll=0)
+    assert out["opened"] is True and out["active"] == "show.vwx"
+    assert documents.list_documents()["paths"]["show.vwx"] == str(other)
+    # already open: just brought to the front
+    out = documents.open_document(str(fake_vw), wait=2, poll=0)
+    assert out["opened"] is False and out["active"] == "plan.vwx"
+
+
+def test_open_document_rejects_bad_paths(fake_vw, tmp_path):
+    with pytest.raises(documents.DocumentsError, match="does not exist"):
+        documents.open_document(str(tmp_path / "missing.vwx"))
+    with pytest.raises(documents.DocumentsError, match="absolute path"):
+        documents.open_document("show.vwx")
 
 
 def test_write_tools_refuse_wrong_document(monkeypatch):
