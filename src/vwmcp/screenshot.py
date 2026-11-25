@@ -59,10 +59,14 @@ def error_output(app: str, limit: int = 800) -> str | None:
     year = app.rsplit(" ", 1)[-1]
     path = Path.home() / "Library/Application Support/Vectorworks" / year / "Error Output"
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = path.read_text(encoding="utf-8", errors="replace")[-8000:]
     except OSError:
         return None
-    return text[-limit:].strip() or None
+    # The message is the last line starting with "Error"; the traceback follows it.
+    at = text.rfind("\nError")
+    if at >= 0:
+        text = text[at + 1:]
+    return text[:limit].strip() or None
 
 
 def blocking_windows(windows: list[Window], app: str | None = None) -> list[dict]:
