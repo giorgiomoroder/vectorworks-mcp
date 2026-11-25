@@ -874,3 +874,28 @@ reverted; both censuses ended at their baselines.
   3 + spindle, 374.25 in), truss path U with two F34C21 corners and
   `fit="center"` (gaps 49.8 / 35.8 / 49.8 in split to both ends).
 - **Verified on 2026:** tower and `fit="center"` (first live run of both).
+- **Saving.** `vs.VSave(name)` saves a *saved view* ("Saves the current
+  view"), not the document: two stray saved views (type 49) were made and
+  deleted again. `vs.SaveActiveDocument()` with no argument raised the
+  Script Errors alert on 2026 ("Invalid number of parameters to the
+  callback function. : index = 0 name=strParam": it takes one string,
+  untested, and it has no docstring so the checker could not refuse it);
+  that alert then blocked 2026 for the rest of the night (left for Michael
+  to click, as promised). `vs.DoMenuTextByName("Save", 0)` on a saved
+  document is silent and writes the file (2027, mtime and size changed);
+  `vw_save_document` does only that and refuses never-saved documents.
+- **Error Output.** The alert's "Refer to the file Error Output" means
+  `~/Library/Application Support/Vectorworks/<year>/Error Output`, which
+  holds the VectorScript error line and the Python traceback.
+  `vw_screenshot` now returns its tail as `error_output` next to the alert
+  (`in_front`). The alert sat at window level 8 this time (level 0 on
+  2026-11-20); it is recognised by its size and title at any level.
+- **New lifecycle tools, live on 2026 (before the alert) and 2027:** layer
+  rename via `SetName(layerHandle, name)` + `GetLName` read-back,
+  `RenameClass`, `DelObject(layerHandle)` (deletes the layer's objects
+  with it), `DelClass`, `HRotate(h, (cx, cy), angle)` (revert turns back),
+  `HDuplicate(h, dx, dy)` (keeps plug-in parameters; the copy is a new
+  object with its own uuid), all reverted cleanly; censuses at baseline.
+- Files left behind on purpose: `~/Documents/mcp_truss_2027.vwx` (a copy of
+  the 2026 test doc) and the unsaved converted tab
+  `mcp_truss_2027_v2027.vwx` in Vectorworks 2027 (close without saving).

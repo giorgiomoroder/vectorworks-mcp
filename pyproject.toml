@@ -1,6 +1,6 @@
 [project]
 name = "vwmcp"
-version = "0.2.0"
+version = "0.2.1"
 description = "Mac-native MCP server for Vectorworks Spotlight: lighting devices, positions, paperwork, symbols, screenshots. Pure Python, no SDK, per-call revert."
 readme = "README.md"
 license = "MIT"

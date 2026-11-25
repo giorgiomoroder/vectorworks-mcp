@@ -5,6 +5,36 @@ Dates are the day the batch was verified inside Vectorworks.
 
 ## Unreleased
 
+## 0.2.1 (2026-11-25), beta
+
+Live-tested on Vectorworks 2027 (32.1.1) for the first time across the
+board, and on 2026 (31.7). 61 tools. **Bridge 0.2.1: run `vwmcp
+install-plugin` (or `vw_doctor(fix=True)`) and restart Vectorworks once**,
+or reload it from a job as described in docs/vs-notes.md.
+
+- Vectorworks 2027: a plug-in object made by a job was not painted until a
+  later reset; every creating write now ends with a refresh job and the
+  bridge repaints after each write (`BRIDGE_VERSION` 0.2.1). Title block
+  fields are written in a follow-up job when the records arrive late.
+- Two versions side by side: `vw_screenshot` matched windows by the word
+  "Vectorworks" and could capture the other version's window. Fixed.
+- `vw_list_documents` lists document tabs behind the front one (they are
+  invisible windows); `vw_open_document` opens a .vwx from disk and waits
+  for its window, reporting the converted `_v2027` copy of an older file.
+- Lifecycle tools from the TDQS review: `vw_rename_layer`, `vw_delete_layer`,
+  `vw_rename_class`, `vw_delete_class`, `vw_rotate_objects`,
+  `vw_duplicate_objects`, `vw_save_document` (in place; Vectorworks has no
+  silent Save As).
+- Library imports journal the nested symbols that come along (a hoist's
+  hook parts) so `vw_revert_last` removes them too.
+- `vw_apply_class_standard` is all-or-nothing and checks the created names;
+  the standard's "Soft Goods" class is now "Scenery-Soft Goods" (a record
+  format of the old name made Vectorworks create "Soft Goods-2").
+- The argument check accepts a colour index for COLOR parameters
+  (`SetClPenFore(name, index)` was refused).
+- `vw_screenshot`: the Script Errors alert is recognised at the modal level
+  too and carries the text of Vectorworks' "Error Output" file; tool-tip
+  sized floating windows are no longer listed as in front.
 - `vw_mvr_check`: `gdtf_unlinked` for a GDTF name typed into the field
   without a linked fixture type (writing the field links nothing; only the
   Object Info palette's GDTF chooser does).
