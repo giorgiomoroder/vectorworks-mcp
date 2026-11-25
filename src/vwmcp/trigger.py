@@ -121,9 +121,19 @@ class MacTrigger:
             raise TriggerError(
                 f"{self.app} is still starting ({up:.0f}s). Try again in a few seconds."
             )
-        from vwmcp.screenshot import has_document_window
+        from vwmcp.screenshot import has_document_window, is_script_error_alert, error_output
 
-        if has_document_window(self.windows(), self.app, self.titles_visible()) is False:
+        windows = self.windows()
+        if any(is_script_error_alert(w) for w in windows):
+            # Live 2026-11-25: the alert blocks every job until OK is clicked;
+            # refusing here beats a 15 s claim timeout, and the Error Output
+            # file says what went wrong.
+            err = error_output(self.app, 300)
+            raise TriggerError(
+                f"{self.app} is showing the Script Errors alert; jobs cannot run until someone "
+                "clicks OK in Vectorworks." + (f" Error Output says: {err}" if err else "")
+            )
+        if has_document_window(windows, self.app, self.titles_visible()) is False:
             raise TriggerError(
                 f"No document is open in {self.app} (only the start screen). A job sent now "
                 "would crash Vectorworks. Open a document first."

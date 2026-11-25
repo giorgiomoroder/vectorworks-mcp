@@ -104,6 +104,22 @@ def test_refuses_when_only_the_start_screen_is_open(root):
     assert procs == []
 
 
+def test_refuses_while_the_script_errors_alert_is_up(root, monkeypatch, tmp_path):
+    # Live 2026-11-25: the alert (small window titled "Vectorworks", level 8
+    # here) blocked 2026 for the night; a job sent then only times out.
+    from vwmcp import screenshot
+    from vwmcp.screenshot import Window
+    monkeypatch.setattr(screenshot.Path, "home", classmethod(lambda cls: tmp_path))
+    f = tmp_path / "Library/Application Support/Vectorworks/2026/Error Output"
+    f.parent.mkdir(parents=True)
+    f.write_text("Error: Invalid number of parameters to the callback function.\n")
+    t, procs = make(root, uptime=120)
+    t.windows = lambda: [Window(1, "Plot.vwx", 0, 0, 0, 1400, 900), Window(2, "Vectorworks", 8, 700, 250, 324, 130)]
+    with pytest.raises(TriggerError, match="Script Errors alert.*Invalid number of parameters"):
+        t()
+    assert procs == []
+
+
 def test_sends_when_a_document_window_exists_or_titles_are_unknown(root):
     from vwmcp.screenshot import Window
     t, procs = make(root, uptime=120)
