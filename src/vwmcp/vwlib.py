@@ -634,13 +634,32 @@ def apply_class_attrs(create, restyle):
     prev = _str(vs.ActiveClass())
     before = class_attrs([c["name"] for c in restyle])
     created = []
-    for c in create:
-        vs.NameClass(c["name"])  # creates and activates (vs-notes)
-        created.append(c["name"])
-    if created and prev:
-        vs.NameClass(prev)
-    for c in create + restyle:
-        _set_class_attrs(c["name"], c)
+    try:
+        for c in create:
+            vs.NameClass(c["name"])  # creates and activates (vs-notes)
+            actual = _str(vs.ActiveClass())
+            created.append(actual)
+            if actual != c["name"]:
+                # Live 2026-11-25 (VW 2027): a class cannot share its name with a
+                # record format ("Soft Goods" once that plug-in was used), so
+                # Vectorworks quietly made "Soft Goods-2".
+                raise ValueError("class %r could not be created under that name (Vectorworks made %r: "
+                                 "the name is taken, usually by a record format); nothing changed"
+                                 % (c["name"], actual))
+        if created and prev:
+            vs.NameClass(prev)
+        for c in create + restyle:
+            _set_class_attrs(c["name"], c)
+    except Exception:
+        if prev:
+            vs.NameClass(prev)
+        for n in created:  # all-or-nothing: a refused call must not leave new classes
+            if n in list_classes():
+                vs.DelClass(n)
+        for n, attrs in before.items():
+            if attrs.get("exists"):
+                _set_class_attrs(n, attrs)
+        raise
     return {"document": current_document(), "created": created,
             "restyled": [c["name"] for c in restyle], "before": before}
 

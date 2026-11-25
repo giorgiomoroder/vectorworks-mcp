@@ -195,6 +195,28 @@ class FakeDoc:
         v.ActiveClass = lambda: self.active_class
         v.NameClass = lambda n: (self.classes.append(n) if n not in self.classes else None) or setattr(self, "active_class", n)
         v.DelClass = lambda n: self.classes.remove(n)
+        # class attributes (apply_class_attrs); NameClass may be made to suffix a name
+        self.class_attrs = {}
+        self.class_name_taken = set()
+        def name_class(n):
+            if n in self.class_name_taken:
+                n = n + "-2"
+            if n not in self.classes:
+                self.classes.append(n)
+            self.active_class = n
+        v.NameClass = name_class
+        v.RGBToColorIndex = lambda r, g, b: (r // 257, g // 257, b // 257)
+        attrs = lambda n: self.class_attrs.setdefault(n, {"pen": (0, 0, 0), "fill": (0, 0, 0), "pat": 0, "lw": 1, "ug": True})  # noqa: E731
+        v.GetClPenFore = lambda n: tuple(x * 257 for x in attrs(n)["pen"])
+        v.GetClFillFore = lambda n: tuple(x * 257 for x in attrs(n)["fill"])
+        v.GetClFPat = lambda n: attrs(n)["pat"]
+        v.GetClLW = lambda n: attrs(n)["lw"]
+        v.GetClUseGraphic = lambda n: attrs(n)["ug"]
+        v.SetClPenFore = lambda n, c: attrs(n).__setitem__("pen", c)
+        v.SetClFillFore = lambda n, c: attrs(n).__setitem__("fill", c)
+        v.SetClFPat = lambda n, p: attrs(n).__setitem__("pat", p)
+        v.SetClLW = lambda n, w: attrs(n).__setitem__("lw", w)
+        v.SetClUseGraphic = lambda n, b: attrs(n).__setitem__("ug", b)
         # views
         v.SetViewVector = lambda loc, target, up: self.events.append(("view", loc, up))
         v.DoMenuTextByName = lambda name, chunk: self.events.append(("menu", name))
@@ -818,6 +840,26 @@ def test_apply_class_standard_journals_created_and_restyled(fake, monkeypatch):
     assert {"op": "class", "name": "Rigging-Truss"} in kw["ops"]
     attrs_op = [o for o in kw["ops"] if o["op"] == "class_attrs"][0]
     assert attrs_op["name"] == "Lighting-Instruments" and attrs_op["before"] == before
+
+
+def test_apply_class_standard_creates_and_styles_on_the_fake_document(doc):
+    out = drawing.vw_apply_class_standard("spotlight", only=["Rigging-Truss", "Scenery-Soft Goods"])
+    assert out["created"] == ["Rigging-Truss", "Scenery-Soft Goods"]
+    assert "Rigging-Truss" in doc.classes and doc.class_attrs["Rigging-Truss"]["lw"] > 0
+    assert doc.active_class == "None"  # the user's active class is kept
+    generic.vw_revert_last()
+    assert "Rigging-Truss" not in doc.classes and "Scenery-Soft Goods" not in doc.classes
+
+
+def test_apply_class_standard_rolls_back_when_a_name_is_taken(doc):
+    # Live 2026-11-25 (VW 2027): NameClass("Soft Goods") made "Soft Goods-2"
+    # because a record format of that name existed; the refused job had also
+    # left every class created before the failure.
+    doc.class_name_taken.add("Scenery-Soft Goods")
+    with pytest.raises(ToolError, match="Scenery-Soft Goods-2"):
+        drawing.vw_apply_class_standard("spotlight", only=["Rigging-Truss", "Scenery-Soft Goods"])
+    assert "Rigging-Truss" not in doc.classes and "Scenery-Soft Goods-2" not in doc.classes
+    assert doc.active_class == "None"
 
 
 def test_apply_class_standard_unknown_name(fake):

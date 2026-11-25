@@ -181,7 +181,7 @@ def vw_create_class(
 def vw_apply_class_standard(
     standard: Annotated[str, _d("Name of the bundled class standard. 'spotlight' (the only one today) "
                                 "defines Lighting-Instruments / -Labels / -Positions / -Focus Points / "
-                                "-Cables, Rigging-Truss / -Hoists, Stage-Decks / -Steps, Soft Goods, "
+                                "-Cables, Rigging-Truss / -Hoists, Stage-Decks / -Steps, Scenery-Soft Goods, "
                                 "Audio, Video, Scenery, People, Venue-Architecture / -Seating, Notes, "
                                 "Dimensions.")] = "spotlight",
     only: Annotated[list[str] | None, _d("Limit the work to these class names or name prefixes, for "

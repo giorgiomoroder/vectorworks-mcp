@@ -152,7 +152,7 @@ after and anything Spotlight overrode.
 
 ### Make it look like a drawing
 1. `vw_apply_class_standard("spotlight", document=)`: a consistent class set
-   (Lighting-*, Rigging-*, Stage-*, Soft Goods, Audio, Video, Scenery, People,
+   (Lighting-*, Rigging-*, Stage-*, Scenery-Soft Goods, Audio, Video, Scenery, People,
    Venue-*, Notes) with colours and line weights; `overwrite=True` restyles
    classes that already exist. Then put objects in those classes
    (`class_name=` on the insert tools).
