@@ -2,14 +2,16 @@
 
 Mac-native MCP server for Vectorworks, Spotlight-first, pure Python.
 Public repo: https://github.com/giorgiomoroder/vectorworks-mcp (MIT).
-Status: **v0.2.0 beta**, tested on Vectorworks 2026 (Update 3 and 31.7; English,
-Spotlight) and 2027 (32.1.1, English, 2026-11-19: reads, exec_python,
-duplicate_layer, set_vertices, reverts; a contributor runs it on 2027 German) on macOS. Read `docs/architecture.md` and `docs/vs-notes.md`
+Status: **v0.2.1 beta**, tested on Vectorworks 2026 (Update 3 and 31.7; English,
+Spotlight) and 2027 (32.1.1, English; full live pass of every insert, list,
+check and revert tool on 2026-11-25, see vs-notes "Live findings
+2026-11-25"; a contributor runs it on 2027 German) on macOS. Read `docs/architecture.md` and `docs/vs-notes.md`
 before changing anything that touches Vectorworks.
 
 ## Layout
 
-- `vw-plugin/vwmcp/vwmcp_bridge.py`: in-app executor (~120 lines). Installed to
+- `vw-plugin/vwmcp/vwmcp_bridge.py`: in-app executor (bridge 0.2.1: checked
+  `vs`, document guard, repaint after every write job). Installed to
   `~/Library/Application Support/Vectorworks/2026/Plug-ins/vwmcp/`. Run by the
   user-created **MCP Run Job** menu command (`from vwmcp import vwmcp_bridge;
   vwmcp_bridge.run_pending()`). Bump `BRIDGE_VERSION` and
@@ -40,7 +42,15 @@ before changing anything that touches Vectorworks.
   `data/class_standards.json`: `vw_apply_class_standard` (revert op `class_attrs`).
   `viewmap.py`: screenshot pixel ↔ drawing coordinates (`vw_screenshot(mapping=True)`,
   `vw_point_to_world`). `platform.py`: step placement for `vw_insert_platform`.
-  Tool group `drawing` = class standard + `vw_create_sheet`.
+  Tool group `drawing` = class standard + `vw_create_sheet`. Lifecycle tools
+  (2026-11-25, from the TDQS review, live on both versions): `vw_rename_layer`,
+  `vw_delete_layer`, `vw_rename_class`, `vw_delete_class`, `vw_rotate_objects`,
+  `vw_duplicate_objects`, `vw_save_document` (File > Save only: Vectorworks
+  has no silent Save As, `VSave` saves a view and `SaveActiveDocument()`
+  without its string argument raises the Script Errors alert). The class
+  standard's soft goods class is "Scenery-Soft Goods" (a record format named
+  "Soft Goods" exists once that plug-in was used, and classes cannot share
+  a record's name).
 - `src/vwmcp/lightwright.py` (2026-11-20, offline): `vw_lightwright_snapshot` /
   `vw_lightwright_patch`, Spotlight's Lightwright Data Exchange XML next to the
   `.vwx` (format from Gribiche64/vectorworks-bridge PROTOCOL.md): read without
@@ -69,17 +79,25 @@ before changing anything that touches Vectorworks.
 - `src/vwmcp/install.py` + `server.py`: `vwmcp` (stdio server), `vwmcp install-plugin`,
   `vwmcp doctor [--fix]` (`doctor.py`: bridge version, Claude configs, VW process,
   stale job/result files, log summary; never touches Vectorworks).
-- `src/vwmcp/documents.py`: `vw_list_documents` / `vw_switch_document` via plain
-  AppleScript (`name of every window`, `open POSIX file`, addressed to
-  `config.DEFAULT_APP` by name); remembers document paths in
+- `src/vwmcp/documents.py`: `vw_list_documents` / `vw_switch_document` /
+  `vw_open_document` via plain AppleScript (every window with its `visible`
+  flag: document tabs behind the front one are invisible windows named
+  `*.vwx`; `open POSIX file` opens or fronts a file, an older file comes
+  back as an unsaved `<name>_v2027.vwx` copy); remembers document paths in
   `VWMCP_HOME/document_paths.json`. Write tools take `document=` and call
-  `app.require_document` first (new write tools should too).
+  `app.require_document` first (new write tools should too). Every write
+  that creates objects ends with `app.refresh_objects` (a follow-up job that
+  resets new plug-in objects: VW 2027 paints them only then).
 - `src/vwmcp/render.py`: `vw_render_layers`, draws exported geometry to a PNG
   (pure Python, no Screen Recording needed).
 - `src/vwmcp/vslint.py` + `data/vs_api_<year>.json`: pre-flight lint of Python
   sent to Vectorworks (`vw_lint`, `vwmcp lint`, `vwmcp dump-api`).
 - `src/vwmcp/screenshot.py`: `vw_screenshot`. CoreGraphics window list via ctypes +
   `screencapture -l <id>` + `sips`. No Apple Event, so it works while a dialog blocks.
+  Windows are matched by the full app name (two versions run side by side);
+  a Script Errors alert in `in_front` carries the tail of Vectorworks'
+  "Error Output" file (`error_output`), so the error can be read without
+  clicking.
 - `scripts/install-macos.sh`: one-line installer (uv, bridge, Claude Desktop + Code config).
   `scripts/install-windows.ps1` is experimental and untested.
 
@@ -109,7 +127,11 @@ before changing anything that touches Vectorworks.
   Errors alert, a plug-in's Object Preferences dialog and a right-click
   menu held open; Vectorworks' own dialogs (About, Vectorworks Preferences)
   do **not**, jobs run underneath (live 2026-11-21). `vw_screenshot` lists
-  what is in front (`in_front`) without touching the app. `vslint.py` (from
+  what is in front (`in_front`) without touching the app. Functions without
+  a docstring are unchecked: `vs.SaveActiveDocument()` raised the alert on
+  2026-11-25 and blocked 2026 for the night. Prefer `DoMenuTextByName` for
+  document commands; never call an undocumented `vs.*` function live
+  without a reason to believe its signature. `vslint.py` (from
   the PO4 fork, bgst84) checks syntax, vs.* argument counts, deprecated
   calls and the safety classes before `vw_exec_python` (code or `path`)
   sends anything (also `vw_lint`, `vwmcp lint FILE`); the signature table is
@@ -150,7 +172,7 @@ uv build                  # wheel must contain vwmcp/_plugin/vwmcp_bridge.py
 
 - Tool definitions are graded by Glama (TDQS). Before a push that touches a
   tool: `uvx tdqs lint --command "uv run --project . vwmcp" --fail-on never`
-  (deterministic, no key; 2026-11-21: 0 errors, 3 heuristic warnings).
+  (deterministic, no key; 2026-11-25: 0 errors, 3 heuristic warnings).
   `tests/test_tool_definitions.py` enforces a description on every parameter
   (`Annotated[..., Field(description=...)]`), 80+ character tool
   descriptions and the `vw_<verb>_<thing>` naming. The .mcpb manifest shows
@@ -184,6 +206,11 @@ on a throwaway doc and record findings in `docs/vs-notes.md`:
       along a polyline; towers = `vw_insert_truss_run(vertical=True, ...)`
       (2026-11-21, live: pieces stood up with `Set3DRot`, the `Vertical`
       flag alone does nothing).
+- [x] **Vectorworks 2027 pass** (2026-11-25, unattended, test docs): every
+      insert/list/check tool and every revert ran on 2027; fixes in
+      CHANGELOG 0.2.1. 2027 has no truss library on disk (Resource Manager
+      download) and cannot read 2026 library files, so truss ran in a
+      converted copy of the 2026 test doc.
 - [~] **Truss.** `vw_insert_truss_run` (live 2026-11-17): straight runs from a
       library symbol, end to end at a height, dimensions/weight from the symbol's
       `BrxTrussItemRecord`, linked via `C_START_UUID`, new TrussSystem, class in a

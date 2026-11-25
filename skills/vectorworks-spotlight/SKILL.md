@@ -150,6 +150,16 @@ after and anything Spotlight overrode.
   places people/backline symbols with a name label each. The symbols must be
   in the document first (import from the People / Audio libraries).
 
+### Tidy up and hand over
+- `vw_rename_layer` / `vw_rename_class` keep the objects; `vw_delete_layer` /
+  `vw_delete_class` refuse while something is on the layer or in the class
+  (`force=True` deletes with it, and that is a revert barrier).
+- `vw_duplicate_objects(uuids, dx, dy)` copies plug-in objects with their
+  parameters; `vw_rotate_objects(uuids, angle)` turns a group in place.
+- `vw_save_document(document=)` is File > Save; it refuses a document that
+  has never been saved (Vectorworks would ask for a name). `vw_open_document`
+  opens a .vwx from disk; an older file comes back as an unsaved `_v2027` copy.
+
 ### Make it look like a drawing
 1. `vw_apply_class_standard("spotlight", document=)`: a consistent class set
    (Lighting-*, Rigging-*, Stage-*, Scenery-Soft Goods, Audio, Video, Scenery, People,
