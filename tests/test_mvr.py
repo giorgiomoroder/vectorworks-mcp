@@ -142,7 +142,7 @@ def test_summary_counts_devices_per_check():
 
 
 def test_fixtureid_is_the_fixture_type_not_an_id():
-    # Live 2026-11-20: the Bobby Lee plot (VW 2026) has "FixtureID" = "Astera AX5" etc.
+    # Live 2026-11-20: the BL plot (VW 2026) has "FixtureID" = "Astera AX5" etc.
     fields = [f for f in ALL_FIELDS if f != "Fixture ID"] + ["FixtureID"]
     rows = [{**{k: v for k, v in device(uuid="a").items() if k != "Fixture ID"}, "FixtureID": "Astera AX5"},
             {**{k: v for k, v in device(uuid="b", unit="2", channel="2", address="1/17", absolute="17").items()

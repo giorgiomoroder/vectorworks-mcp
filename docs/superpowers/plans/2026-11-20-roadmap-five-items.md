@@ -97,9 +97,9 @@ field is reported as `field_missing`, never a KeyError.
   `vw_list_library_resources` (3D symbols). Add to `TOOL_GROUPS["spotlight"]`, README row.
 - [ ] **Step 7:** `uv run pytest -q`, commit "Add vw_mvr_check: MVR export pre-flight".
 
-**Live check (later, read-only, Bobby Lee plot or sketch doc):** `GetSymbolType` values,
+**Live check (later, read-only, BL plot or sketch doc):** `GetSymbolType` values,
 exact GDTF/Fixture ID field names on 2026 and 2027, whether `Fixture ID` is blank by
-default on the Bobby Lee plot (216 devices).
+default on the BL plot (216 devices).
 
 ---
 
@@ -128,7 +128,7 @@ default on the Bobby Lee plot (216 devices).
   already in vwlib).
 - [ ] **Step 4:** README, `TOOL_GROUPS["spotlight"]`, commit.
 
-**Live check:** one 3-row CSV against the Bobby Lee plot (OK to modify), then `vw_revert_last`.
+**Live check:** one 3-row CSV against the BL plot (OK to modify), then `vw_revert_last`.
 
 ---
 

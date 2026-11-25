@@ -511,7 +511,7 @@ def mvr_data():
     device rows with the MVR-relevant fields this document has, the names of the
     position objects, and the symbol type of every fixture symbol in use
     (vs.GetSymbolType: 0 2D only, 1 3D, 2 hybrid; live 2026-11-20 on the
-    Bobby Lee plot: field names FixtureID, GDTF Fixture Mode, GDTF Fixture
+    BL plot: field names FixtureID, GDTF Fixture Mode, GDTF Fixture
     Type ID exist in VW 2026)."""
     known = set(ld_field_names())
     fields = [f for f in MVR_FIELDS if f in known]

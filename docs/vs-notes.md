@@ -73,7 +73,7 @@ menu command gets a fresh Python state (module globals don't persist).
   (not a modal level), which blocked the next job for good. `vw_screenshot`
   now reports it as `in_front` (`screenshot.is_script_error_alert`).
 
-## MVR pre-flight (live 2026-11-20 on the Bobby Lee plot, VW 2026, 216 devices)
+## MVR pre-flight (live 2026-11-20 on the BL plot, VW 2026, 216 devices)
 
 - Lighting Device fields present: `FixtureID` (**the fixture type name**,
   e.g. "Astera AX5", shared by all units of a type: not an MVR identity),
@@ -680,7 +680,7 @@ Not checked: argument values, handle object types, `Begin*`/`End*` pairing
 (unpaired `BeginPoly`/`EndSym` crash). Keystone also found: a job sent while
 only the start screen is open segfaults 2026 and 2027 (first `vs` call).
 
-Live check done 2026-11-20/21 on VW 2026 31.7 (build 879357), Bobby Lee
+Live check done 2026-11-20/21 on VW 2026 31.7 (build 879357), BL
 plot, 2027 untouched: see "Live findings 2026-11-21" below.
 
 ## Lightwright Data Exchange (format from Gribiche64/vectorworks-bridge; live 2026-11-20 on VW 2026)
@@ -701,8 +701,7 @@ after Vectorworks regains focus. Hazards from that project: an unknown
 a backup); `Wattage` is not updated on a type swap; `Delete` actions from a
 stale `.lw6` removed fixtures. Our tools refuse all three. Verified live
 2026-11-20 (details in "Live findings 2026-11-21"): the file is
-`<document stem>.xml` beside the `.vwx` (`~/Downloads/BobbyLee-BalboaTheater-
-LightPlot_v2026.xml`), a Channel patch landed about a second after the click
+`<document stem>.xml` beside the `.vwx` (`~/Downloads/<BL plot>.xml`), a Channel patch landed about a second after the click
 into Vectorworks, the inverse patch on revert landed the same way.
 
 ## GDTF assignment (live 2026-11-21, VW 2026, test_mcp.vwx)
@@ -722,7 +721,7 @@ ships seven generic GDTF files in `Plug-Ins/VW_Spotlight/Data/GDTF/`
 `.gdtf` under Libraries or the user folder. `vw_mvr_check` now reports
 `gdtf_unlinked` for a typed name with type id 0.
 
-## Live findings 2026-11-21 (safety batch on VW 2026 31.7 build 879357; Bobby Lee plot; 2027 untouched)
+## Live findings 2026-11-21 (safety batch on VW 2026 31.7 build 879357; BL plot; 2027 untouched)
 
 - **Bridge upgrade without a restart.** 2026 had bridge 0.1.0 cached (uptime
   about 6 h). One job did `importlib.reload(vwmcp.vwmcp_bridge)` from inside
@@ -759,8 +758,8 @@ ships seven generic GDTF files in `Plug-Ins/VW_Spotlight/Data/GDTF/`
   screen)", job renamed `.cancelled`, Vectorworks kept running. The AppleScript
   `name of every window` returned an empty name in that state ("No document
   is open" from `vw_list_documents`), consistent.
-- **Lightwright round trip.** Exchange was already on for the Bobby Lee plot;
-  `~/Downloads/BobbyLee-BalboaTheater-LightPlot_v2026.xml` (697 KB, header
+- **Lightwright round trip.** Exchange was already on for the BL plot;
+  `~/Downloads/<BL plot>.xml` (697 KB, header
   TimeStamp 2025-12-08, VWVersion 3120, build 841021) held 398 fixture blocks
   (Device_Type Light 307 / Moving Light 89 / Practical 2; 36 symbol names;
   116 with a Lightwright_ID) where `vw_list_lighting_devices` lists 216
@@ -856,7 +855,7 @@ reverted; both censuses ended at their baselines.
   name. `vw_create_sheet` now writes the fields in a follow-up job when the
   first attempt finds no records. Object variable 1003 = scale still works.
 - **MVR check on a fresh 2027 document:** no "Fixture ID" field on the
-  Lighting Device record (the Bobby Lee 2026 plot has one); the check
+  Lighting Device record (the BL 2026 plot has one); the check
   reports it as skipped. `no_gdtf`, `unpatched`, `no_position` as on 2026.
 - **"Fit To Objects" fits the selection** when something is selected.
 - **Read-only `vw_exec_python` probes are revert barriers** (by design): a
@@ -899,7 +898,7 @@ reverted; both censuses ended at their baselines.
 - Files left behind on purpose: `~/Documents/mcp_truss_2027.vwx` (a copy of
   the 2026 test doc) and the unsaved converted tab
   `mcp_truss_2027_v2027.vwx` in Vectorworks 2027 (close without saving).
-- **398 vs 216 (Bobby Lee plot, read in a converted 2027 copy, 390 MB,
+- **398 vs 216 (BL plot, read in a converted 2027 copy, 390 MB,
   opened in 3.8 s):** a deep walk of every layer (FInLayer/NextObj,
   into groups) finds 398 Lighting Devices; `ForEachObject("(PON='Lighting
   Device')")` finds 216. The other 182 sit on **referenced layers** (names
@@ -909,7 +908,7 @@ reverted; both censuses ended at their baselines.
   them. Our census is the document's own devices; a referenced-layer count
   would need the walk (cheap enough here: one job).
 - **"Fixture ID" is gone in 2027:** the Lighting Device record of the
-  converted Bobby Lee plot has no "Fixture ID" field either (2026 had it);
+  converted BL plot has no "Fixture ID" field either (2026 had it);
   `vw_mvr_check` reports the check as skipped. MVR summary on 2027 for the
   same plot: 214 no_gdtf, 2 gdtf_unlinked, 106 unpatched, 34 address_shared,
   6 address_overlap, 44 no_position, 81 position_without_object, 8
