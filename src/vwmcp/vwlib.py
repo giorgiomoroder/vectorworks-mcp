@@ -785,29 +785,36 @@ def create_sheet(name, layers, scale=48.0, hide_classes=None, title_block=None):
             if _is_nil(tb):
                 out["title_block_error"] = "%r plug-in did not create an object" % TITLE_BLOCK
             else:
-                # Live 2026-11-20: title/number/project are fields of the attached
-                # records "Title Block Sheet Data" / "Title Block Project Data",
-                # not plug-in parameters. Write each field to the record that has it.
-                where = {}
-                for rec, fields in _attached_records(tb).items():
-                    if rec == TITLE_BLOCK:
-                        continue
-                    for f in fields:
-                        where.setdefault(f, rec)
-                done = []
-                for k, v in title_block.items():
-                    if k in where:
-                        vs.SetRField(tb, where[k], k, _str(v))
-                        done.append(k)
-                if done:
-                    vs.ResetObject(tb)
-                out["title_block"] = {"uuid": h_uuid(tb), "fields_set": sorted(done),
-                                      "fields_unknown": sorted(set(title_block) - set(done)),
-                                      "fields_available": sorted(where)}
+                out["title_block"] = set_title_block_fields(h_uuid(tb), title_block)
     finally:
         if prev:
             _activate_layer(prev)
     return out
+
+
+def set_title_block_fields(uuid, fields):
+    """Write title block data. Live 2026-11-20: title/number/project are
+    fields of the attached records "Title Block Sheet Data" / "Title Block
+    Project Data", not plug-in parameters; each field goes to the record that
+    has it. Live 2026-11-25 (VW 2027): those records are attached only after
+    the creating job ends, so the tool calls this again in a follow-up job
+    when fields_available comes back empty."""
+    tb = handle(uuid)
+    where = {}
+    for rec, names in _attached_records(tb).items():
+        if rec == TITLE_BLOCK:
+            continue
+        for f in names:
+            where.setdefault(f, rec)
+    done = []
+    for k, v in fields.items():
+        if k in where:
+            vs.SetRField(tb, where[k], k, _str(v))
+            done.append(k)
+    if done:
+        vs.ResetObject(tb)
+    return {"uuid": uuid, "fields_set": sorted(done),
+            "fields_unknown": sorted(set(fields) - set(done)), "fields_available": sorted(where)}
 
 
 # ---- view mapping (for screenshots) ---------------------------------------------

@@ -890,6 +890,29 @@ def test_create_sheet_journals_the_sheet_layer(fake, monkeypatch):
     assert last_revert_ops(fake) == [{"op": "layer", "name": "Sheet-1"}]
 
 
+def test_create_sheet_writes_title_block_fields_in_a_follow_up_job_when_records_are_late(fake, monkeypatch):
+    # Live 2026-11-25 (VW 2027): the title block's data records exist only after
+    # the creating job ends, so the first write finds no fields at all.
+    calls = []
+
+    def fake_vw(fn, **kw):
+        calls.append((fn, kw))
+        if fn == "create_sheet":
+            return {"document": "Plot.vwx", "sheet": "S1", "viewport": "vp-1", "scale": 48.0,
+                    "layers_shown": ["L"], "title_block": {"uuid": "tb-1", "fields_set": [],
+                    "fields_unknown": ["Sheet Title"], "fields_available": []}}
+        if fn == "set_title_block_fields":
+            return {"uuid": "tb-1", "fields_set": ["Sheet Title"], "fields_unknown": [],
+                    "fields_available": ["Sheet Title", "Sheet Number"]}
+        return fake(fn, **kw)
+
+    for mod in (app, generic, drawing):
+        monkeypatch.setattr(mod, "vw", fake_vw)
+    out = drawing.vw_create_sheet("S1", layers=["L"], title="Plot")
+    assert ("set_title_block_fields", {"uuid": "tb-1", "fields": {"Sheet Title": "Plot"}}) in calls
+    assert out["title_block"]["fields_set"] == ["Sheet Title"]
+
+
 def test_create_sheet_needs_layers_and_positive_scale(fake):
     with pytest.raises(ToolError, match="layers"):
         drawing.vw_create_sheet("S", layers=[])

@@ -256,6 +256,11 @@ def vw_create_sheet(
         tb["Project Name"] = project
     out = vw("create_sheet", name=name, layers=layers, scale=scale, hide_classes=hide_classes,
              title_block=tb or None)
+    block = out.get("title_block")
+    if block and block["fields_unknown"] and not block["fields_available"]:
+        # VW 2027 attaches the title block's data records after the creating
+        # job ends (live 2026-11-25): write the fields in a follow-up job.
+        out["title_block"] = vw("set_title_block_fields", uuid=block["uuid"], fields=tb)
     return _journal(out, "vw_create_sheet", [{"op": "layer", "name": name}])
 
 
