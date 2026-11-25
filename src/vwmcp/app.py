@@ -23,7 +23,7 @@ from vwmcp.journal import Journal
 # the next tool call.
 DOCUMENT: contextvars.ContextVar[dict | None] = contextvars.ContextVar("vwmcp_document", default=None)
 
-EXPECTED_BRIDGE_VERSION = "0.2.0"  # bridge 0.2: checked vs, document guard, libs by sha
+EXPECTED_BRIDGE_VERSION = "0.2.1"  # bridge 0.2: checked vs, document guard, libs by sha; 0.2.1: redraw after writes
 # Vectorworks major versions this release was tested against (31 = 2026).
 TESTED_VW_MAJORS = {31: "2026", 32: "2027"}  # 2027: 32.1.1, live 2026-11-19 (vs-notes)
 

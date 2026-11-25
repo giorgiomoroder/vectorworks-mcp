@@ -35,7 +35,7 @@ import time
 import traceback
 import types
 
-BRIDGE_VERSION = "0.2.0"
+BRIDGE_VERSION = "0.2.1"
 DEFAULT_ROOT = os.path.join(os.path.expanduser("~"), ".vwmcp")
 # Written by `vwmcp install-plugin --home`: lets each Vectorworks version run
 # its own server's jobs when several versions are installed side by side.
@@ -396,6 +396,11 @@ def _run_job(job, res, out, vs_module):
                 sys.modules["vs"] = saved_vs
     res["ok"] = True
     res["value"] = _jsonable(value)
+    if want:  # a document pin marks a write: repaint so the result shows at once
+        try:
+            vs_module.ReDrawAll()
+        except Exception:  # noqa: BLE001 - a missing view never fails a job
+            pass
 
 
 def run_pending(root=None, vs_module=None, max_jobs=1):

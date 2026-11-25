@@ -248,8 +248,9 @@ def test_missing_tables_mean_no_checking(root, typed_vs, monkeypatch, tmp_path):
     assert read_result(root, "c9")["ok"] is True
 
 
-def test_bridge_version_is_0_2_0():
-    assert bridge.BRIDGE_VERSION == "0.2.0"
+def test_bridge_version_matches_what_the_server_expects():
+    from vwmcp import app
+    assert bridge.BRIDGE_VERSION == app.EXPECTED_BRIDGE_VERSION == "0.2.1"
 
 
 # ------------------------------------------------- document guard, libraries
@@ -277,6 +278,34 @@ def test_document_guard_prefers_the_path_when_both_sides_have_one(root, fake_vs)
     write_job(root, "d3", "1", document={"name": "Plot", "path": "/Users/m/other/Plot.vwx"})
     bridge.run_pending(root, vs_module=fake_vs)
     assert read_result(root, "d3")["never_ran"] is True
+
+
+def test_write_job_ends_with_a_redraw_so_the_view_is_not_stale(root, fake_vs):
+    # Live 2026-11-25 (VW 2027): decks inserted by a job were invisible until
+    # the next click; a capture right after the job showed the old view.
+    fake_vs.GetFPathName = lambda: "/Users/m/Plot.vwx"
+    fake_vs.ReDrawAll = lambda: fake_vs.calls.append("redraw")
+    write_job(root, "r1", "vs.calls.append('ran')", document={"name": "Plot"})
+    bridge.run_pending(root, vs_module=fake_vs)
+    assert read_result(root, "r1")["ok"] is True
+    assert fake_vs.calls == ["ran", "redraw"]
+
+
+def test_read_job_without_document_pin_does_not_redraw(root, fake_vs):
+    fake_vs.ReDrawAll = lambda: fake_vs.calls.append("redraw")
+    write_job(root, "r2", "vs.calls.append('ran')")
+    bridge.run_pending(root, vs_module=fake_vs)
+    assert fake_vs.calls == ["ran"]
+
+
+def test_redraw_failure_does_not_fail_the_job(root, fake_vs):
+    fake_vs.GetFPathName = lambda: "/Users/m/Plot.vwx"
+    def boom():
+        raise RuntimeError("no view")
+    fake_vs.ReDrawAll = boom
+    write_job(root, "r3", "7", document={"name": "Plot"})
+    bridge.run_pending(root, vs_module=fake_vs)
+    assert read_result(root, "r3")["ok"] is True and read_result(root, "r3")["value"] == 7
 
 
 def test_helper_library_is_compiled_once_per_session(root, fake_vs, tmp_path):
