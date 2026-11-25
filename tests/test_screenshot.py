@@ -103,6 +103,16 @@ def test_script_error_alert_is_reported_even_at_normal_window_level():
     assert ss.pick_window([doc, alert]) == doc
 
 
+def test_tiny_floating_chrome_is_not_reported_as_in_front():
+    # Live 2026-11-25 (VW 2026): four 32 x 27 px level-3 windows and a 723 x 17
+    # strip appeared during a job; they are UI bits, not palettes or dialogs.
+    tiny = [ss.Window(id=1, title="", layer=3, x=0, y=0, width=32, height=27),
+            ss.Window(id=2, title="", layer=3, x=0, y=0, width=723, height=17)]
+    palette = ss.Window(id=3, title="Object Info", layer=3, x=0, y=0, width=300, height=600)
+    assert ss.blocking_windows(tiny) == []
+    assert [w["id"] for w in ss.blocking_windows(tiny + [palette])] == [3]
+
+
 def test_object_preferences_window_is_reported_as_blocking():
     # Live 2026-11-20: a plug-in's "Object Preferences" dialog (level 0) held a job.
     prefs = ss.Window(id=5, title="Object Preferences", layer=0, x=997, y=35, width=250, height=1002)

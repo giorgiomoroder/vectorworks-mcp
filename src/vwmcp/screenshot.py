@@ -56,6 +56,8 @@ def blocking_windows(windows: list[Window]) -> list[dict]:
     jobs, with a label for the level so the caller can say which it is."""
     out = []
     for w in windows:
+        if w.layer == 3 and (w.width < 50 or w.height < 50):
+            continue  # tool-tip sized floating chrome (live 2026-11-25: 32 x 27 px bits), not a palette
         kind = normal_level_blocker(w) if w.layer == 0 else WINDOW_LEVELS.get(
             w.layer, "other (level %d)" % w.layer)
         if kind is None:
