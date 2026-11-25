@@ -113,6 +113,20 @@ def test_tiny_floating_chrome_is_not_reported_as_in_front():
     assert [w["id"] for w in ss.blocking_windows(tiny + [palette])] == [3]
 
 
+def test_script_error_alert_carries_the_error_output_text(tmp_path, monkeypatch):
+    # Live 2026-11-25 (VW 2026): the alert says "Refer to the file Error Output";
+    # that file holds the real message, e.g. a wrong parameter count.
+    monkeypatch.setattr(ss.Path, "home", classmethod(lambda cls: tmp_path))
+    f = tmp_path / "Library/Application Support/Vectorworks/2026/Error Output"
+    f.parent.mkdir(parents=True)
+    f.write_text("Error: Invalid number of parameters to the callback function. : index = 0 name=strParam\n")
+    alert = ss.Window(id=9, title="Vectorworks", layer=8, x=0, y=0, width=324, height=130)
+    front = ss.blocking_windows([alert], "Vectorworks 2026")
+    assert "Invalid number of parameters" in front[0]["error_output"]
+    assert "error_output" not in ss.blocking_windows([alert])[0]
+    assert "error_output" not in ss.blocking_windows([alert], "Vectorworks 2025")[0]
+
+
 def test_object_preferences_window_is_reported_as_blocking():
     # Live 2026-11-20: a plug-in's "Object Preferences" dialog (level 0) held a job.
     prefs = ss.Window(id=5, title="Object Preferences", layer=0, x=997, y=35, width=250, height=1002)

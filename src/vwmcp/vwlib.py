@@ -841,17 +841,21 @@ def duplicate_objects(uuids, dx=0.0, dy=0.0, dz=0.0):
     return {"document": current_document(), "created": [h_uuid(d) for d in made]}
 
 
-def save_document(path=None):
-    """Save the active document in place (File > Save, no dialog when it has
-    a file), or under `path` with VSave. An unsaved document needs `path`."""
+def save_document():
+    """File > Save in place. Refused on a never-saved document (GetFPathName
+    is just the name then, and Save would open a dialog). Live 2026-11-25
+    (VW 2027): `vs.VSave(name)` saves a *saved view*, not the document; there
+    is no Save As call. `SaveActiveDocument()` exists (no docstring)."""
     current = _str(vs.GetFPathName())
-    if path:
-        vs.VSave(path)
-        return {"document": current_document(), "path": _str(vs.GetFPathName()), "saved_as": path}
-    if not current:
-        raise ValueError("this document has never been saved; pass path= (Save would open a dialog)")
+    if not current or "/" not in current and "\\" not in current:
+        raise ValueError("this document has never been saved (Save would open a dialog); "
+                         "save it once by hand in Vectorworks")
+    # Live 2026-11-25: SaveActiveDocument() with no argument raised the Script
+    # Errors alert on VW 2026 ("Invalid number of parameters ... name=strParam":
+    # it takes one string, untested). The menu command is silent on a saved
+    # document (VW 2027).
     vs.DoMenuTextByName("Save", 0)
-    return {"document": current_document(), "path": current, "saved_as": None}
+    return {"document": current_document(), "path": current}
 
 
 def move_objects(uuids, dx=0.0, dy=0.0, dz=0.0):

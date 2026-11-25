@@ -414,19 +414,14 @@ def vw_delete_class(
 
 @mcp.tool(annotations=WRITE)
 def vw_save_document(
-    path: Annotated[str | None, _d("Absolute .vwx path to save under (Save As without a dialog). Omitted: "
-                                   "File > Save in place, which needs a document that has a file.")] = None,
     document: Annotated[str | None, _d(_DOCUMENT)] = None,
 ) -> dict:
-    """Save the active document, in place or under a new path, without any dialog.
-    Without `path` this is File > Save and fails on a never-saved document
-    (Vectorworks would ask for a name). With `path` the document is written
-    there and keeps working under that name. Not journaled: earlier reverts
-    still work after a save. Returns {path, saved_as}."""
+    """Save the active document in place (File > Save) without any dialog.
+    Fails on a document that has never been saved, because Vectorworks would
+    ask for a name then (there is no silent Save As in the scripting API).
+    Not journaled: earlier reverts still work after a save. Returns {path}."""
     app.require_document(document)
-    if path is not None and (not path.lower().endswith(".vwx") or not path.startswith("/")):
-        raise ToolError("path must be an absolute path ending in .vwx")
-    out = vw("save_document", path=path)
+    out = vw("save_document")
     out.pop("document", None)
     return out
 

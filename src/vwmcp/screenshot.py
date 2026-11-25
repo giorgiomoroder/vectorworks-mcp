@@ -51,19 +51,41 @@ class Window:
 WINDOW_LEVELS = {3: "floating", 8: "modal dialog", 101: "popup/contextual menu"}
 
 
-def blocking_windows(windows: list[Window]) -> list[dict]:
+def error_output(app: str, limit: int = 800) -> str | None:
+    """The tail of Vectorworks' "Error Output" file (user folder of that
+    version), which the Script Errors alert points at. Live 2026-11-25: it
+    holds the VectorScript error text and the Python traceback, e.g.
+    "Invalid number of parameters to the callback function."."""
+    year = app.rsplit(" ", 1)[-1]
+    path = Path.home() / "Library/Application Support/Vectorworks" / year / "Error Output"
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    return text[-limit:].strip() or None
+
+
+def blocking_windows(windows: list[Window], app: str | None = None) -> list[dict]:
     """Non-document windows (dialogs, menus) that stop Vectorworks from running
-    jobs, with a label for the level so the caller can say which it is."""
+    jobs, with a label for the level so the caller can say which it is. With
+    `app`, a Script Errors alert also carries the "Error Output" text."""
     out = []
     for w in windows:
         if w.layer == 3 and (w.width < 50 or w.height < 50):
             continue  # tool-tip sized floating chrome (live 2026-11-25: 32 x 27 px bits), not a palette
-        kind = normal_level_blocker(w) if w.layer == 0 else WINDOW_LEVELS.get(
-            w.layer, "other (level %d)" % w.layer)
+        if is_script_error_alert(w):  # level 0 (2026-11-20) or level 8 (2026-11-25), same alert
+            kind = "alert (Script error: click OK in Vectorworks)"
+        else:
+            kind = normal_level_blocker(w) if w.layer == 0 else WINDOW_LEVELS.get(
+                w.layer, "other (level %d)" % w.layer)
         if kind is None:
             continue
         d = w.as_dict()
         d["kind"] = kind
+        if app and "Script error" in kind:
+            err = error_output(app)
+            if err:
+                d["error_output"] = err
         out.append(d)
     return out
 
@@ -264,4 +286,4 @@ def screenshot(
     out = folder / time.strftime("%Y%m%d-%H%M%S.png")
     capture(window, out, max_width, run)
     prune(folder)
-    return out, window, blocking_windows(found)
+    return out, window, blocking_windows(found, app)

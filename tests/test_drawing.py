@@ -192,7 +192,6 @@ class FakeDoc:
         v.GetObjectVariableInt = lambda h, i: 1
         v.RenameClass = lambda a, b: self._rename_class(a, b)
         v.GetFPathName = lambda: self.file_path
-        v.VSave = lambda p: setattr(self, "file_path", p)
         v.Get3DCntr = lambda h: ((self.objects[h]["x"], self.objects[h]["y"]), self.objects[h]["z"])
         v.Get3DInfo = lambda h: (1, 1, 1)
         v.Move3DObj = lambda h, dx, dy, dz: self._move(h, dx, dy, dz)
@@ -1377,13 +1376,9 @@ def test_duplicate_objects_and_revert(doc):
     assert nh not in doc.objects and a in doc.objects
 
 
-def test_save_document_in_place_or_as(doc):
-    assert drawing.vw_save_document() == {"path": "/Users/m/Plot.vwx", "saved_as": None}
+def test_save_document_in_place_only(doc):
+    assert drawing.vw_save_document() == {"path": "/Users/m/Plot.vwx"}
     assert ("menu", "Save") in doc.events
-    out = drawing.vw_save_document(path="/Users/m/Copy.vwx")
-    assert out == {"path": "/Users/m/Copy.vwx", "saved_as": "/Users/m/Copy.vwx"}
-    doc.file_path = ""
+    doc.file_path = "Untitled 1"  # never saved: GetFPathName is just the name
     with pytest.raises(ToolError, match="never been saved"):
         drawing.vw_save_document()
-    with pytest.raises(ToolError, match="absolute path"):
-        drawing.vw_save_document(path="plot.vwx")
