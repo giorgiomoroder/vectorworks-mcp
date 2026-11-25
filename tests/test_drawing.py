@@ -150,6 +150,7 @@ class FakeDoc:
         self.next = 100
         self.selected = set()
         self.library_parts = {}
+        self.file_path = "/Users/m/Plot.vwx"
         v = vs
         v.GetFName = lambda: "Plot.vwx"
         # selection (insert helpers save and restore it)
@@ -182,6 +183,18 @@ class FakeDoc:
         v.ResetObject = lambda h: self.events.append(("reset", h))
         v.DelObject = lambda h: self._delete(h)
         v.HMove = lambda h, dx, dy: self._move(h, dx, dy, 0)
+        v.HRotate = lambda h, c, a: self.objects[h].__setitem__("rot", self.objects[h].get("rot", 0) + a)
+        v.HDuplicate = lambda h, dx, dy: self._duplicate(h, dx, dy)
+        v.FInLayer = lambda lh: next((hh for hh, o in sorted(self.objects.items()) if self.layers.get(o["layer"]) == lh), 0)
+        v.NextObj = lambda h: next((hh for hh, o in sorted(self.objects.items()) if hh > h and o["layer"] == self.objects[h]["layer"]), 0)
+        v.FLayer = lambda: next(iter(self.layers.values()), 0)
+        v.NextLayer = lambda lh: next((x for x in list(self.layers.values())[list(self.layers.values()).index(lh) + 1:]), 0)
+        v.GetObjectVariableInt = lambda h, i: 1
+        v.RenameClass = lambda a, b: self._rename_class(a, b)
+        v.GetFPathName = lambda: self.file_path
+        v.VSave = lambda p: setattr(self, "file_path", p)
+        v.Get3DCntr = lambda h: ((self.objects[h]["x"], self.objects[h]["y"]), self.objects[h]["z"])
+        v.Get3DInfo = lambda h: (1, 1, 1)
         v.Move3DObj = lambda h, dx, dy, dz: self._move(h, dx, dy, dz)
         # layers / classes
         v.GetLayerByName = lambda n: self.layers.get(n, 0)
@@ -271,8 +284,11 @@ class FakeDoc:
             if hh == h:
                 del self.resources[name]
         for name, lh in list(self.layers.items()):
-            if lh == h:
+            if lh == h:  # a layer goes with its objects
                 del self.layers[name]
+                for hh, o in list(self.objects.items()):
+                    if o["layer"] == name:
+                        del self.objects[hh]
 
     def _move(self, h, dx, dy, dz):
         o = self.objects[h]
@@ -298,6 +314,33 @@ class FakeDoc:
             if hh == h:
                 del self.resources[name]
                 self.resources[n] = h
+        for name, lh in list(self.layers.items()):
+            if lh == h:  # layers rename through SetName too
+                self.layers = {(n if k == name else k): v for k, v in self.layers.items()}
+                for o in self.objects.values():
+                    if o["layer"] == name:
+                        o["layer"] = n
+                if self.active_layer == name:
+                    self.active_layer = n
+
+    def _rename_class(self, a, b):
+        self.classes[self.classes.index(a)] = b
+        for o in self.objects.values():
+            if o["class"] == a:
+                o["class"] = b
+        if self.active_class == a:
+            self.active_class = b
+
+    def _duplicate(self, h, dx, dy):
+        o = dict(self.objects[h])
+        o["fields"] = dict(o["fields"])
+        nh = self.next
+        self.next += 1
+        o["uuid"] = "u%d" % nh
+        o["x"] += dx
+        o["y"] += dy
+        self.objects[nh] = o
+        return nh
 
 
 PIO_FIELDS = {"Truss": ["Length", "Truss Type"], "Lighting Device": ["Channel", "Purpose"]}
@@ -1252,3 +1295,95 @@ def test_vertical_truss_run_without_base_starts_at_z(doc, fake_vs):
     assert [round(o["z"], 2) for o in items] == [10, round(10 + 3000 / 25.4, 2)]
     assert out["total_height"] == pytest.approx(2 * 3000 / 25.4, abs=0.01)
     assert out["pieces"][0]["z"] == 10
+
+
+# ---- completeness tools (2026-11-25): rename/delete layers and classes, rotate, duplicate, save -----
+
+def test_rename_layer_and_revert(doc):
+    doc.layers["Stage"] = doc.next; doc.next += 1
+    out = drawing.vw_rename_layer("Stage", "Deck")
+    assert out == {"name": "Stage", "new_name": "Deck"} and "Deck" in doc.layers and "Stage" not in doc.layers
+    with pytest.raises(ToolError, match="already exists"):
+        drawing.vw_rename_layer("Deck", doc.active_layer)
+    generic.vw_revert_last()
+    assert "Stage" in doc.layers and "Deck" not in doc.layers
+
+
+def test_delete_layer_refuses_objects_unless_forced(doc):
+    doc.layers["Stage"] = lh = doc.next; doc.next += 1
+    h = doc._create(3, layer="Stage")
+    with pytest.raises(ToolError, match="holds 1 object"):
+        drawing.vw_delete_layer("Stage")
+    out = drawing.vw_delete_layer("Stage", force=True)
+    assert out == {"name": "Stage", "objects_deleted": 1} and h not in doc.objects and "Stage" not in doc.layers
+    with pytest.raises(ToolError, match="can't be reverted"):
+        generic.vw_revert_last()
+
+
+def test_delete_layer_keeps_one_and_switches_the_active_layer(doc):
+    first = doc.active_layer
+    with pytest.raises(ToolError, match="only layer"):
+        drawing.vw_delete_layer(first)
+    doc.layers["Other"] = doc.next; doc.next += 1
+    out = drawing.vw_delete_layer(first)
+    assert out["objects_deleted"] == 0 and doc.active_layer == "Other"
+
+
+def test_rename_class_follows_objects_and_reverts(doc):
+    doc.classes.append("Old")
+    h = doc._create(3, **{"class": "Old"})
+    out = drawing.vw_rename_class("Old", "Scenery-New")
+    assert out == {"name": "Old", "new_name": "Scenery-New"} and doc.objects[h]["class"] == "Scenery-New"
+    with pytest.raises(ToolError, match="built-in"):
+        drawing.vw_rename_class("None", "Nope")
+    generic.vw_revert_last()
+    assert doc.objects[h]["class"] == "Old" and "Scenery-New" not in doc.classes
+
+
+def test_delete_class_refuses_used_unless_forced(doc):
+    doc.classes.append("Old")
+    doc._create(3, **{"class": "Old"})
+    with pytest.raises(ToolError, match="used by 1 object"):
+        drawing.vw_delete_class("Old")
+    out = drawing.vw_delete_class("Old", force=True)
+    assert out == {"name": "Old", "objects_moved_to_none": 1} and "Old" not in doc.classes
+    with pytest.raises(ToolError, match="built-in"):
+        drawing.vw_delete_class("Dimension")
+
+
+def test_rotate_objects_about_their_centre_and_revert(doc):
+    a = doc._create(3, x=0, y=0)
+    b = doc._create(3, x=10, y=0)
+    out = drawing.vw_rotate_objects([doc.objects[a]["uuid"], doc.objects[b]["uuid"]], 90)
+    assert out == {"rotated": 2, "center": [5.0, 0.0], "angle": 90.0}
+    assert doc.objects[a]["rot"] == 90 and doc.objects[b]["rot"] == 90
+    generic.vw_revert_last()
+    assert doc.objects[a]["rot"] == 0 and doc.objects[b]["rot"] == 0
+    out = drawing.vw_rotate_objects([doc.objects[a]["uuid"]], 45, center=[1, 2])
+    assert out["center"] == [1.0, 2.0]
+    with pytest.raises(ToolError, match="center must be"):
+        drawing.vw_rotate_objects([doc.objects[a]["uuid"]], 45, center=[1])
+
+
+def test_duplicate_objects_and_revert(doc):
+    a = doc._create(3, x=0, y=0, **{"class": "Scenery"})
+    out = drawing.vw_duplicate_objects([doc.objects[a]["uuid"]], dx=100, dy=0, dz=12)
+    new = out["created"]
+    assert len(new) == 1 and new[0] != doc.objects[a]["uuid"]
+    nh = next(h for h, o in doc.objects.items() if o["uuid"] == new[0])
+    assert doc.objects[nh]["x"] == 100 and doc.objects[nh]["z"] == 12 and doc.objects[nh]["class"] == "Scenery"
+    assert ("refresh", ) not in doc.events  # plain objects: nothing to reset
+    generic.vw_revert_last()
+    assert nh not in doc.objects and a in doc.objects
+
+
+def test_save_document_in_place_or_as(doc):
+    assert drawing.vw_save_document() == {"path": "/Users/m/Plot.vwx", "saved_as": None}
+    assert ("menu", "Save") in doc.events
+    out = drawing.vw_save_document(path="/Users/m/Copy.vwx")
+    assert out == {"path": "/Users/m/Copy.vwx", "saved_as": "/Users/m/Copy.vwx"}
+    doc.file_path = ""
+    with pytest.raises(ToolError, match="never been saved"):
+        drawing.vw_save_document()
+    with pytest.raises(ToolError, match="absolute path"):
+        drawing.vw_save_document(path="plot.vwx")

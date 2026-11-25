@@ -781,3 +781,96 @@ ships seven generic GDTF files in `Plug-Ins/VW_Spotlight/Data/GDTF/`
   journals those (`inverse_from: live`), falling back to the export's values
   with a warning; and it copies the full export to `~/.vwmcp/lightwright/`
   before overwriting (`backup` in the result).
+
+## Live findings 2026-11-25 (night pass on VW 2027 32.1.1 and VW 2026 31.7; test documents only)
+
+Unattended session (Michael away until morning). Both apps running, each
+with one throwaway document (`test_mcp.vwx` on 2026, `test_mcp 2027.vwx` on
+2027, later a converted copy `mcp_truss_2027_v2027.vwx`). Every write was
+reverted; both censuses ended at their baselines.
+
+- **Bridge upgrade in place works on 2027 too.** 2027 still ran bridge
+  0.1.0; `vwmcp install-plugin --vw-version 2027 --home ~/.vwmcp-2027` then
+  one job with `importlib.reload(vwmcp.vwmcp_bridge)` → 0.2.0, later 0.2.1,
+  no restart. The checked `vs` behaves the same: `ColorIndexToRGB((1000,
+  2000, 3000))` → `VSArgumentError`, no window.
+- **Two Vectorworks versions at once: windows are owned by the full app
+  name** (`kCGWindowOwnerName` "Vectorworks 2026" / "Vectorworks 2027").
+  Matching only "Vectorworks" made the 2027 server capture the 2026 window.
+  Fixed in `screenshot.py`.
+- **A plug-in object created by a job is not painted on 2027** until
+  `vs.ResetObject` runs on it in a *later* job. The geometry is there at the
+  end of the creating job (children: a rectangle, three type-24 objects, a
+  group for a Stage Deck; `GetBBox` is still (0,0)-(0,0) inside that job,
+  `object_extents` in the follow-up job is right), Fit To Objects uses its
+  extent, but the canvas shows nothing; `ReDrawAll` alone in a later job
+  does not help, window occlusion is irrelevant. Bridge 0.2.1 calls
+  `ReDrawAll` after every job that carries a document pin, and every
+  creating write runs `refresh_objects` (ResetObject on new type-86
+  objects + ReDrawAll) as a follow-up job (`app.refresh_objects`, hooked
+  into `_journal`). Verified: decks painted immediately, with 2026 in front.
+- **Library files must match the app version.** `BuildResourceListN(16,
+  path)` on 2027 returns 0 names for the 2026 `F34.vwx` (72 MB, real file),
+  wherever it sits (app folder, 2027 user library, `BuildResourceListN2`
+  with either flag, `BuildResourceList2(16, 14, ...)`); the same call lists
+  148 symbols from a 2027 library file. Truss libraries are Resource
+  Manager downloads (not in `defaultContent.db`, 645 entries, all
+  `FileOnLineFlag` 1); 2027 has none on disk. A copy of F34.vwx was left
+  in `~/Library/Application Support/Vectorworks/2027/Libraries/
+  Entertainment/Rigging/Truss/Global Truss/` (unused; delete or keep).
+- **Opening an older file in 2027** (`open POSIX file` on a copy of the 2026
+  test doc) converts it silently into an unsaved document named
+  `<name>_v2027.vwx` in a new tab, 20-30 s, no dialog. `vw_open_document`
+  (new) does this and reports `converted`.
+- **Document tabs:** with two tabs, `name of every window whose visible is
+  true` lists only the front tab. All windows: the front tab visible, the
+  other tab and the helper windows ("", "Vectorworks", "Window") invisible,
+  and the front document listed twice. `vw_list_documents` now lists every
+  window and keeps invisible ones only when named `*.vwx`.
+- **`SetClPenFore(name, colourIndex)`** is right (vs-notes 2026-11-20) but
+  the Keystone table types the parameter COLOR, so bridge 0.2.0 refused it
+  ("must be one tuple"). The live docstring is `vs.SetClPenFore(className,
+  color)`. The checker now accepts a single number for COLOR when one
+  argument is left per parameter; loose r, g, b stay refused.
+- **A refused job is not rolled back.** The refused class-standard job had
+  already run `NameClass` 17 times; the classes stayed. `apply_class_attrs`
+  is now all-or-nothing.
+- **`NameClass("Soft Goods")` makes "Soft Goods-2"** once the Soft Goods
+  plug-in has been used: `GetObject("Soft Goods")` is then a record format
+  (type 47) and Vectorworks does not let a class share the name. The
+  bundled standard's class is now "Scenery-Soft Goods" and
+  `apply_class_attrs` fails (rolling back) when the created name differs
+  from the requested one.
+- **Nested symbols come with an import.** "Dead Hang 1 Ton Lights" brought
+  "Hoist Machine Hook" and "Hoist Machine Hook Collar" (in a "Symbol Parts"
+  folder); the revert deleted only the main symbol. `import_resource` now
+  diffs the symbol definitions and returns `also`, journaled as resource
+  ops after the main one (parents before parts). The empty "Symbol Parts"
+  folder stays behind (type 92, harmless).
+- **Plug-ins create their own classes** and nothing reverts them: Stage
+  Deck → NonPlot, NonPlot-Loci; hoist → Rigging-Hoist, Rigging-Hoist-Hoist
+  Color-Lights, Rigging-Chain Link; lighting device → Lighting-Incandescent.
+- **Title block on 2027:** the four data records (Title Block Sheet Data,
+  Project Data, Revision Data, Title Block Border) are attached only after
+  the creating job ends; "Sheet Number" auto-fills with the sheet layer's
+  name. `vw_create_sheet` now writes the fields in a follow-up job when the
+  first attempt finds no records. Object variable 1003 = scale still works.
+- **MVR check on a fresh 2027 document:** no "Fixture ID" field on the
+  Lighting Device record (the Bobby Lee 2026 plot has one); the check
+  reports it as skipped. `no_gdtf`, `unpatched`, `no_position` as on 2026.
+- **"Fit To Objects" fits the selection** when something is selected.
+- **Read-only `vw_exec_python` probes are revert barriers** (by design): a
+  view fit by raw Python costs an extra `vw_revert_last` call later.
+- **Tiny floating windows** (four 32 x 27 px and one 723 x 17 px, level 3)
+  showed up in `in_front` during a 2026 job; ignored below 50 px now.
+- **Verified on 2027 with no code change:** stage decks (centres, sizes),
+  steps, ramp, platform, soft goods (path consumed, pleats + pipe drawn),
+  hoists (`BrxHoist` from "Dead Hang 1 Ton Lights": 20 ft hook = 6096 mm,
+  1000 kg, 57.76 lb with chain), lighting devices via `library_path` +
+  Convert to Instrument (unit/channel/purpose), hookup import dry run +
+  apply + revert, class standard (18 classes, revert deletes 18),
+  screenshot mapping (pixel (912, 140) → x −0.01 in on a 1200 px capture),
+  truss run (3 pieces linked, position, 57.15 kg), tower (base plate +
+  3 + spindle, 374.25 in), truss path U with two F34C21 corners and
+  `fit="center"` (gaps 49.8 / 35.8 / 49.8 in split to both ends).
+- **Verified on 2026:** tower and `fit="center"` (first live run of both).

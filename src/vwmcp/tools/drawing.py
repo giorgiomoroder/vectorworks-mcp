@@ -304,6 +304,134 @@ def vw_move_objects(
 
 
 @mcp.tool(annotations=WRITE)
+def vw_rotate_objects(
+    uuids: Annotated[list[str], _d("UUIDs of the objects to rotate; at least one. One unknown UUID rotates nothing.")],
+    angle: Annotated[float, _d("Rotation in degrees, counter-clockwise in plan view (Top/Plan).")],
+    center: Annotated[list[float] | None, _d(f"[x, y] in {_UNITS} to rotate about. Omitted: the centre of the "
+                                             "objects' combined extents, so a group turns in place.")] = None,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
+) -> dict:
+    """Rotate objects in plan view about a point, keeping their positions relative to each other.
+    Every object turns by the same angle about the same centre. All-or-nothing
+    on unknown UUIDs. One revertible step: vw_revert_last turns them back (a
+    plug-in regeneration in between can leave an object off by a fraction of
+    a unit). For a different rotation per object use vw_set_record on its
+    plug-in parameters. Returns {rotated: n, center, angle}."""
+    app.require_document(document)
+    if not uuids:
+        raise ToolError("no uuids given")
+    if center is not None and len(center) != 2:
+        raise ToolError("center must be [x, y]")
+    out = vw("rotate_objects", uuids=uuids, angle=angle, center=center)
+    cx, cy = out["center"]
+    ops = [{"op": "rotate", "uuid": u, "cx": cx, "cy": cy, "angle": float(angle)} for u in uuids]
+    return _journal(out, "vw_rotate_objects", ops)
+
+
+@mcp.tool(annotations=WRITE)
+def vw_duplicate_objects(
+    uuids: Annotated[list[str], _d("UUIDs of the objects to copy; at least one. One unknown UUID copies nothing.")],
+    dx: Annotated[float, _d(f"Offset of the copies along x in {_UNITS}.")] = 0.0,
+    dy: Annotated[float, _d(f"Offset of the copies along y in {_UNITS}.")] = 0.0,
+    dz: Annotated[float, _d(f"Offset of the copies along z in {_UNITS}, for 3D objects.")] = 0.0,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
+) -> dict:
+    """Copy objects to an offset, keeping class, layer, rotation and plug-in parameters.
+    Each copy is a full duplicate (Vectorworks' own duplicate), placed dx, dy,
+    dz away from its original. All-or-nothing. One revertible step:
+    vw_revert_last deletes the copies. To repeat a copy in a row, call again
+    with the returned UUIDs. Returns {created: [uuid, ...]} in the order of
+    `uuids`."""
+    app.require_document(document)
+    if not uuids:
+        raise ToolError("no uuids given")
+    out = vw("duplicate_objects", uuids=uuids, dx=dx, dy=dy, dz=dz)
+    ops = [{"op": "created", "uuid": u} for u in out["created"]]
+    return _journal(out, "vw_duplicate_objects", ops)
+
+
+@mcp.tool(annotations=WRITE)
+def vw_rename_layer(
+    name: Annotated[str, _d("Current layer name, as vw_list_layers shows it.")],
+    new_name: Annotated[str, _d("New name; must not be in use.")],
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
+) -> dict:
+    """Rename a design or sheet layer; its objects stay where they are.
+    Fails if the new name exists. One revertible step: vw_revert_last renames
+    it back. Returns {name, new_name}."""
+    app.require_document(document)
+    out = vw("rename_layer", name=name, new_name=new_name)
+    return _journal(out, "vw_rename_layer", [{"op": "layer_renamed", "name": name, "new_name": out["new_name"]}])
+
+
+@mcp.tool(annotations=WRITE)
+def vw_delete_layer(
+    name: Annotated[str, _d("Layer name, as vw_list_layers shows it.")],
+    force: Annotated[bool, _d("True deletes the layer together with every object on it. Default False "
+                              "refuses while the layer holds objects.")] = False,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
+) -> dict:
+    """Delete a layer, by default only when it is empty.
+    With force=True the objects on it are deleted too and cannot be brought
+    back by vw_revert_last (this call is a revert barrier either way: later
+    reverts stop here). The only layer of a document cannot be deleted; if
+    the layer is active, another one is made active first. Returns {name,
+    objects_deleted}."""
+    app.require_document(document)
+    out = vw("delete_layer", name=name, force=force)
+    return _journal(out, "vw_delete_layer", None)
+
+
+@mcp.tool(annotations=WRITE)
+def vw_rename_class(
+    name: Annotated[str, _d("Current class name, as vw_list_classes shows it.")],
+    new_name: Annotated[str, _d("New name; must not be in use. 'A-B' makes it show under group A in the palette.")],
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
+) -> dict:
+    """Rename a class; every object in it follows, as do viewport overrides.
+    Built-in classes (None, Dimension) cannot be renamed. One revertible
+    step: vw_revert_last renames it back. Returns {name, new_name}."""
+    app.require_document(document)
+    out = vw("rename_class", name=name, new_name=new_name)
+    return _journal(out, "vw_rename_class", [{"op": "class_renamed", "name": name, "new_name": new_name}])
+
+
+@mcp.tool(annotations=WRITE)
+def vw_delete_class(
+    name: Annotated[str, _d("Class name, as vw_list_classes shows it.")],
+    force: Annotated[bool, _d("True deletes the class even while objects use it (they move to class "
+                              "None). Default False refuses then.")] = False,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
+) -> dict:
+    """Delete a class, by default only when no object uses it.
+    Built-in classes (None, Dimension) cannot be deleted. This call is a
+    revert barrier: vw_revert_last cannot recreate the class or put objects
+    back into it. Returns {name, objects_moved_to_none}."""
+    app.require_document(document)
+    out = vw("delete_class", name=name, force=force)
+    return _journal(out, "vw_delete_class", None)
+
+
+@mcp.tool(annotations=WRITE)
+def vw_save_document(
+    path: Annotated[str | None, _d("Absolute .vwx path to save under (Save As without a dialog). Omitted: "
+                                   "File > Save in place, which needs a document that has a file.")] = None,
+    document: Annotated[str | None, _d(_DOCUMENT)] = None,
+) -> dict:
+    """Save the active document, in place or under a new path, without any dialog.
+    Without `path` this is File > Save and fails on a never-saved document
+    (Vectorworks would ask for a name). With `path` the document is written
+    there and keeps working under that name. Not journaled: earlier reverts
+    still work after a save. Returns {path, saved_as}."""
+    app.require_document(document)
+    if path is not None and (not path.lower().endswith(".vwx") or not path.startswith("/")):
+        raise ToolError("path must be an absolute path ending in .vwx")
+    out = vw("save_document", path=path)
+    out.pop("document", None)
+    return out
+
+
+@mcp.tool(annotations=WRITE)
 def vw_set_view(
     view: Annotated[Literal["top_plan", "top", "bottom", "front", "back", "left", "right",
                             "iso", "iso_right", "iso_left"] | None,

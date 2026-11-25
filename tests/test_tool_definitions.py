@@ -39,4 +39,4 @@ def test_merged_tools_are_gone_and_the_count_is_known():
     assert not names & {"vw_get_pio_parameters", "vw_set_pio_parameters", "vw_exec_file",
                         "vw_list_library_files", "vw_list_library_resources"}
     assert {"vw_list_library", "vw_get_record", "vw_set_record", "vw_exec_python"} <= names
-    assert len(names) == 54  # 50 after the merge + hoists x2 + vw_insert_truss_path + vw_open_document
+    assert len(names) == 61  # 54 + rename/delete layer and class, rotate, duplicate, save (2026-11-25)

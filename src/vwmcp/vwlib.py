@@ -255,6 +255,10 @@ def revert(ops):
             h = op["name"] if op["name"] in list_classes() else None
         elif kind == "resource":
             h = vs.GetObject(op["name"])
+        elif kind == "layer_renamed":
+            h = vs.GetLayerByName(op["new_name"])
+        elif kind == "class_renamed":
+            h = op["new_name"] if op["new_name"] in list_classes() else None
         else:
             h = vs.GetObjectByUuid(op["uuid"])
         if _is_nil(h):
@@ -279,6 +283,15 @@ def revert(ops):
         elif kind == "move":
             _move(h, -op["dx"], -op["dy"], -op.get("dz", 0.0))
             moved += 1
+        elif kind == "rotate":
+            vs.HRotate(h, (op["cx"], op["cy"]), -op["angle"])
+            moved += 1
+        elif kind == "layer_renamed":
+            vs.SetName(h, op["name"])
+            restored += 1
+        elif kind == "class_renamed":
+            vs.RenameClass(op["new_name"], op["name"])
+            restored += 1
     return {"document": current_document(), "restored": restored, "deleted": deleted,
             "moved": moved, "missing": missing}
 
@@ -691,6 +704,154 @@ def set_objects_class(uuids, cls):
     for h in hs:
         vs.SetClass(h, cls)
     return {"document": current_document(), "before": before}
+
+
+def _layer_objects(layer_h):
+    """Handles of the objects on a layer (FInLayer / NextObj)."""
+    out, h = [], vs.FInLayer(layer_h)
+    while not _is_nil(h):
+        out.append(h)
+        h = vs.NextObj(h)
+    return out
+
+
+def rename_layer(name, new_name):
+    """Rename a layer (objects stay). Revert op: layer_renamed."""
+    h = vs.GetLayerByName(name)
+    if _is_nil(h):
+        raise LookupError("no layer named %r" % name)
+    if not new_name or new_name == name:
+        raise ValueError("new_name must differ from name")
+    if not _is_nil(vs.GetLayerByName(new_name)):
+        raise ValueError("layer %r already exists" % new_name)
+    vs.SetName(h, new_name)
+    actual = _str(vs.GetLName(h))
+    if actual != new_name:
+        raise RuntimeError("Vectorworks named the layer %r, not %r" % (actual, new_name))
+    return {"document": current_document(), "name": name, "new_name": actual}
+
+
+def delete_layer(name, force=False):
+    """Delete a layer; refuses while objects are on it unless force (they go
+    with it and cannot be restored). The only layer cannot be deleted."""
+    h = vs.GetLayerByName(name)
+    if _is_nil(h):
+        raise LookupError("no layer named %r" % name)
+    layers = list_layers()
+    if len(layers) < 2:
+        raise ValueError("%r is the only layer; a document needs one" % name)
+    n = len(_layer_objects(h))
+    if n and not force:
+        raise ValueError("layer %r holds %d object(s); pass force=True to delete them with it" % (name, n))
+    active = _str(vs.GetLName(vs.ActLayer()))
+    if active == name:  # the active layer cannot go: activate another design layer first
+        other = next((l["name"] for l in layers if l["name"] != name and l["kind"] == "design"), None) \
+            or next(l["name"] for l in layers if l["name"] != name)
+        _activate_layer(other)
+    vs.DelObject(h)
+    if not _is_nil(vs.GetLayerByName(name)):
+        raise RuntimeError("Vectorworks did not delete layer %r" % name)
+    return {"document": current_document(), "name": name, "objects_deleted": n}
+
+
+def _class_object_count(name):
+    n = 0
+    layer = vs.FLayer()
+    while not _is_nil(layer):
+        for h in _layer_objects(layer):
+            if _str(vs.GetClass(h)) == name:
+                n += 1
+        layer = vs.NextLayer(layer)
+    return n
+
+
+def rename_class(name, new_name):
+    """Rename a class; its objects follow. Revert op: class_renamed."""
+    if name not in list_classes():
+        raise LookupError("no class named %r" % name)
+    if name in ("None", "Dimension"):
+        raise ValueError("%r is a built-in class and cannot be renamed" % name)
+    if not new_name or new_name == name:
+        raise ValueError("new_name must differ from name")
+    if new_name in list_classes():
+        raise ValueError("class %r already exists" % new_name)
+    vs.RenameClass(name, new_name)
+    if new_name not in list_classes():
+        raise RuntimeError("Vectorworks did not rename class %r" % name)
+    return {"document": current_document(), "name": name, "new_name": new_name}
+
+
+def delete_class(name, force=False):
+    """Delete a class; refuses while objects use it unless force (Vectorworks
+    moves them to None). Built-in classes cannot be deleted."""
+    if name not in list_classes():
+        raise LookupError("no class named %r" % name)
+    if name in ("None", "Dimension"):
+        raise ValueError("%r is a built-in class and cannot be deleted" % name)
+    n = _class_object_count(name)
+    if n and not force:
+        raise ValueError("class %r is used by %d object(s); pass force=True to delete it anyway "
+                         "(they move to class None)" % (name, n))
+    if _str(vs.ActiveClass()) == name:
+        vs.NameClass("None")
+    vs.DelClass(name)
+    if name in list_classes():
+        raise RuntimeError("Vectorworks did not delete class %r" % name)
+    return {"document": current_document(), "name": name, "objects_moved_to_none": n}
+
+
+def _plan_center(h):
+    ext = _extent3d(h)
+    if ext and ext.get("center"):
+        return ext["center"][0], ext["center"][1]
+    (x1, y1), (x2, y2) = vs.GetBBox(h)
+    return (x1 + x2) / 2.0, (y1 + y2) / 2.0
+
+
+def rotate_objects(uuids, angle, center=None):
+    """Rotate objects in plan by `angle` degrees (counter-clockwise) about
+    `center` (x, y), or about the centre of their combined extents."""
+    hs = _handles(uuids)
+    if center is None:
+        cs = [_plan_center(h) for h in hs]
+        center = (sum(c[0] for c in cs) / len(cs), sum(c[1] for c in cs) / len(cs))
+    cx, cy = float(center[0]), float(center[1])
+    for h in hs:
+        vs.HRotate(h, (cx, cy), float(angle))
+    return {"document": current_document(), "rotated": len(hs), "center": [cx, cy], "angle": float(angle)}
+
+
+def duplicate_objects(uuids, dx=0.0, dy=0.0, dz=0.0):
+    """Copy objects, offset by (dx, dy, dz). All-or-nothing. Returns the new
+    objects' uuids in the order of `uuids`."""
+    hs = _handles(uuids)
+    made = []
+    try:
+        for h in hs:
+            d = vs.HDuplicate(h, dx, dy)
+            if _is_nil(d):
+                raise RuntimeError("HDuplicate returned nothing for %s" % h_uuid(h))
+            if dz:
+                vs.Move3DObj(d, 0, 0, dz)
+            made.append(d)
+    except Exception:
+        for d in made:
+            vs.DelObject(d)
+        raise
+    return {"document": current_document(), "created": [h_uuid(d) for d in made]}
+
+
+def save_document(path=None):
+    """Save the active document in place (File > Save, no dialog when it has
+    a file), or under `path` with VSave. An unsaved document needs `path`."""
+    current = _str(vs.GetFPathName())
+    if path:
+        vs.VSave(path)
+        return {"document": current_document(), "path": _str(vs.GetFPathName()), "saved_as": path}
+    if not current:
+        raise ValueError("this document has never been saved; pass path= (Save would open a dialog)")
+    vs.DoMenuTextByName("Save", 0)
+    return {"document": current_document(), "path": current, "saved_as": None}
 
 
 def move_objects(uuids, dx=0.0, dy=0.0, dz=0.0):
