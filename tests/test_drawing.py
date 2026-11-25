@@ -446,6 +446,16 @@ def test_delete_is_all_or_nothing(doc):
     assert doc.objects == {}
 
 
+def test_set_view_fit_ignores_and_keeps_the_selection(doc, fake_vs):
+    h = doc._create(3)
+    doc.selected.add(h)
+    seen = []
+    fake_vs.DoMenuTextByName = lambda name, chunk: seen.append((name, len(doc.selected)))
+    drawing.vw_set_view(fit=True)
+    assert seen == [("Fit To Objects", 0)]  # nothing selected while fitting
+    assert doc.selected == {h}  # restored after the fit
+
+
 def test_set_view_variants(doc):
     drawing.vw_set_view("iso", fit=True)
     assert ("view", [1, -1, 1], [0, 0, 1]) in [tuple(e[:1]) + tuple(list(x) for x in e[1:]) for e in doc.events]

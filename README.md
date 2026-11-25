@@ -153,8 +153,9 @@ Vectorworks restart. Claude Code users keep using the installer script.
 | `vw_apply_class_standard` | A tidy class set with colours and line weights (Lighting-*, Rigging-*, Stage-*, Soft Goods, Audio, Video, Scenery, People, Venue-*, Notes): creates what is missing, optionally restyles the rest; revertible |
 | `vw_create_sheet` | A sheet layer with a viewport of chosen design layers at a scale, classes hidden in it, optional title block with sheet title/number/project; revertible (not yet run live) |
 | `vw_create_layer`, `vw_create_class`, `vw_move_objects`, `vw_delete_objects` | Document housekeeping; all but delete are revertible |
+| `vw_rename_layer`, `vw_delete_layer`, `vw_rename_class`, `vw_delete_class`, `vw_rotate_objects`, `vw_duplicate_objects` | Layer and class lifecycle, rotate and copy; renames, rotations and copies are revertible, deletes refuse while anything is on the layer or in the class |
 | `vw_set_view` | Top/Plan, standard 3D views, fit to objects (e.g. before a screenshot) |
-| `vw_list_documents` / `vw_switch_document` | List the open documents and bring a saved one to the front (AppleScript, no extra permission). Write tools take an optional `document=` and refuse if another document is active |
+| `vw_list_documents` / `vw_switch_document` / `vw_open_document` / `vw_save_document` | List the open documents (tabs included), bring a saved one to the front, open a .vwx from disk, File > Save (AppleScript and a menu command, no extra permission). Write tools take an optional `document=` and refuse if another document is active |
 | `vw_export_geometry` | Exact 2D geometry of a layer (lines, polygons, arcs, texts, dimensions) as JSON, inline or written to a file; with fill and pen of every object and whether they follow the class |
 | `vw_render_layers` | Picture of any design layers drawn from their real geometry (optionally a zoomed area), independent of the screen; no Screen Recording needed |
 | `vw_duplicate_layer` | Copy a design layer with its objects next to the original (same scale, visibility as the source by default); can return the uuid mapping; revertible |

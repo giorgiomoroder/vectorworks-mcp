@@ -891,7 +891,15 @@ def set_view(view=None, fit=False):
         loc, up = VIEWS[view]
         vs.SetViewVector(loc, (0, 0, 0), up)
     if fit:
-        vs.DoMenuTextByName("Fit To Objects", 0)  # (vwx) VW 2026 has no ZoomToSel
+        # Fit To Objects fits the selection when there is one (live 2026-11-25:
+        # it zoomed to the user's rectangle, not the new decks), so clear it
+        # for the fit and put it back.
+        before = _selected_uuids()
+        vs.DSelectAll()
+        try:
+            vs.DoMenuTextByName("Fit To Objects", 0)  # (vwx) VW 2026 has no ZoomToSel
+        finally:
+            _restore_selection(before)
     vs.ReDrawAll()
     return {"view": view, "fit": fit}
 
