@@ -159,7 +159,8 @@ def vw_list_positions(
     by the device's Position field (a text match, so a typo shows up here as a
     position name without an object). Returns {positions: [{name, uuid, kind, layer,
     device_count, devices?}],
-    by_name: [{name, has_object, device_count, inst_types, universes, channels,
+    by_name: [{name, has_object, device_count, inst_types (dict type -> count, most
+    common first), universes, channels,
     unpatched}] (one per distinct Position name, also when no object carries it,
     so a plot whose positions are only names still gets an overview),
     unassigned_device_count, device_positions_without_object: {name: count}}.

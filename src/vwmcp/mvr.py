@@ -142,7 +142,7 @@ def run_checks(data: dict) -> dict:
           "GDTF fixture in the Object Info palette (typing a name into the field does not link it).")
     if active("gdtf_unlinked"):
         ids = {str(r.get("GDTF Fixture Type ID", "0")).strip() for r in rows}
-        if ids <= {"", "0"}:
+        if rows and ids <= {"", "0"}:
             # Live 2026-11-27 (VW 2027, German): the id stays 0 on every linked
             # device; only a document that populates it can tell linked from typed.
             issues.append({"check": "field_unused", "severity": WARNING,
@@ -215,7 +215,7 @@ def run_checks(data: dict) -> dict:
 
     summary = Counter()
     for i in issues:
-        if i["check"] != "field_missing":
+        if i["check"] not in ("field_missing", "field_unused"):
             summary[i["check"]] += len(i["devices"])
     return {
         "ok": not any(i["severity"] == ERROR for i in issues),

@@ -202,6 +202,8 @@ def test_gdtf_type_id_never_populated_skips_the_unlinked_check():
     assert note["severity"] == "warning" and note["devices"] == []
     assert "GDTF Fixture Type ID" in note["message"] and "skipped" in note["message"]
     assert out["summary"].get("gdtf_unlinked", 0) == 0
+    assert "field_unused" not in out["summary"]
+    assert "field_unused" not in checks(mvr.run_checks(data([])))
     # one non-zero id in the document: the macOS rule applies again
     rows[0]["GDTF Fixture Type ID"] = "12"
     out2 = mvr.run_checks(data(rows))
