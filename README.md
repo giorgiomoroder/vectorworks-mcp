@@ -3,8 +3,9 @@
 <!-- mcp-name: io.github.giorgiomoroder/vectorworks-mcp -->
 
 > **Beta.** Tested on Vectorworks 2026 (Update 3, English) and 2027 (32.1,
-> English and German) with Spotlight on macOS only. Other versions, languages
-> and Windows may not work yet. Save
+> English and German) with Spotlight. Windows works through the MCP Listen
+> window and was tested on 2027 German only. Other versions and languages may
+> not work yet. Save
 > your file before asking for edits, and please
 > [report what you find](https://github.com/giorgiomoroder/vectorworks-mcp/issues/new/choose).
 > Working under an NDA? Read [Your drawing data](#your-drawing-data-and-ndas) first.
@@ -289,9 +290,37 @@ server with each request. Details and the reasons for this design are in
 
 ## Windows
 
-Experimental and untested. `scripts/install-windows.ps1` installs the bridge
-and registers Claude Desktop, but there's no automatic trigger yet: run
-**MCP Run Job** yourself to process each request. Contributions welcome.
+Live-tested on Windows 11 with Vectorworks 2027 (32.1.0, German UI). Other
+Windows setups are untested.
+
+Windows has no automatic trigger. Instead you open **MCP Listen** in
+Vectorworks, and it runs Claude's requests while its window is open.
+
+1. Install [uv](https://docs.astral.sh/uv/) (`scripts/install-windows.ps1`
+   does it if needed). Then run `powershell -ExecutionPolicy Bypass -File
+   scripts/install-windows.ps1 -VwVersion 2027`, or by hand:
+   `uvx --from git+https://github.com/giorgiomoroder/vectorworks-mcp vwmcp install-plugin --vw-version 2027`.
+   This copies the bridge to `%APPDATA%\Nemetschek\Vectorworks\2027\Plug-ins\vwmcp\`
+   and places `MCP Run Job.vsm` and `MCP Listen.vsm` next to it.
+2. Claude Desktop: `install-windows.ps1` writes its config. Claude Code:
+   `claude mcp add -s user vectorworks -e VWMCP_VW_VERSION=2027 -- uv run --directory <path-to-checkout> vwmcp`.
+3. Once only: standard Vectorworks workspaces are read-only. Duplicate one,
+   then drag **MCP Run Job** (Miscellaneous) and **MCP Listen** (Scripts)
+   into a menu such as Tools.
+4. Each session: open **MCP Listen** before asking Claude. The window shows
+   "Jobs run: N". Press **Stop** when you want to edit yourself, then open it
+   again for the next request. Claude's edits are regular undo steps, so
+   **Ctrl+Z** works.
+
+If MCP Listen is closed, a request fails after about 15 seconds with a message
+naming it. If you create the command by hand in the Plug-in Manager instead
+of using the `.vsm`, the script must be the one line `from vwmcp import
+vwmcp_bridge; vwmcp_bridge.listen()`. Pasting two lines collapsed them into
+one in the editor and gave a SyntaxError.
+
+macOS only for now: `vw_screenshot`, `vw_list_documents`, `vw_switch_document`
+and `vw_open_document`. The `vw_doctor` tests expect `/bin/sh`. A trigger that
+needs no open window would require a native plug-in.
 
 ## Development
 

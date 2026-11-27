@@ -1,7 +1,8 @@
-# vectorworks-mcp installer for Windows (EXPERIMENTAL: untested in v0.1).
+# vectorworks-mcp installer for Windows (live-tested on Vectorworks 2027, German).
 #   powershell -ExecutionPolicy Bypass -File install-windows.ps1
-# On Windows there is no automatic trigger yet: run Tools > MCP Run Job
-# in Vectorworks to process each queued request.
+#   powershell -ExecutionPolicy Bypass -File install-windows.ps1 -VwVersion 2027
+# On Windows there is no automatic trigger: open the MCP Listen command in
+# Vectorworks before asking Claude, and it runs the queued requests.
 param(
   [string]$VwVersion = "2026",
   [string]$Source = "git+https://github.com/giorgiomoroder/vectorworks-mcp"
@@ -28,4 +29,8 @@ if (Test-Path (Split-Path $cfg)) {
   Write-Host "Added 'vectorworks' to $cfg"
 }
 
-Write-Host "`nNow create the 'MCP Run Job' menu command in Vectorworks (see README)."
+Write-Host "`nInstalled 'MCP Run Job' and 'MCP Listen' (.vsm) next to the bridge."
+Write-Host "Add both to a menu once. Standard workspaces are read-only: duplicate one first."
+Write-Host "Before asking Claude, open MCP Listen in Vectorworks; press Stop to edit yourself."
+Write-Host "Claude Code users register the server with (not run by this script):"
+Write-Host "  claude mcp add -s user vectorworks -e VWMCP_VW_VERSION=$VwVersion -- uv run --directory <path-to-checkout> vwmcp"

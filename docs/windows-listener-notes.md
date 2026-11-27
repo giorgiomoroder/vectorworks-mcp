@@ -1,7 +1,9 @@
 # Windows trigger: notes from other projects' in-app listeners
 
-Status (2026-11-17): research only. We have no Windows machine; the design
-below needs a tester. Everything here was read from public code, not run.
+Status (2026-11-27): implemented as `vwmcp_bridge.listen()` (menu command
+**MCP Listen**) and live-tested on Windows 11, Vectorworks 2027 (32.1.0,
+German UI, Spotlight). See "Live findings 2026-11-27" at the end. The
+research sections below were read from public code, not run.
 
 ## The problem
 
@@ -64,7 +66,7 @@ menu command via `ISDK::DoMenuName` from a message-only window). That is the
 non-modal answer, but it needs the SDK and a compiler per Vectorworks
 version. Its macOS path is still the TCP dialog bridge.
 
-## Proposed design for vwmcp (untested)
+## Proposed design for vwmcp
 
 Keep the file protocol; add a second menu command, **MCP Listen**, whose
 script opens the modal dialog above and, on every timer tick, calls
@@ -77,12 +79,54 @@ sockets, no new wire format, and the existing bridge file stays the executor.
   AppleScript hop for people who prefer an explicit session.
 - Dialog text: the job folder, a counter of jobs run, "Close to stop".
 - Tick interval 100 ms is plenty for a file poll (`os.listdir` of a tiny folder).
-- Open question: whether a write done from a timer event inside the dialog
-  creates its own undo step or none. BhaveshY's listener worked, but check
-  Cmd-Z behaviour and the journal (`vw_revert_last`) on the first live test.
-- Open question: `vs.SetupDialogC` exists as a constant in VW 2026 Python
-  (rt-vectorworks-mcp falls back to 12255 if it doesn't).
+- Resolved: a write done from a timer event inside the dialog is a regular
+  undo step. Ctrl+Z removed it (see the live findings).
+- Resolved: `vs.SetupDialogC` is not exposed in the 2027 Python API table, so
+  the constant 12255 is used.
 
 First live test (macOS, throwaway doc, user watching): open the dialog, send
 `vw_ping` with the trigger disabled, confirm the result lands; then one
 `vw_set_record` and Cmd-Z.
+
+## Live findings 2026-11-27
+
+Setup: Windows 11, Vectorworks 2027 (`vs` reports 32.1.0, build 885363),
+German UI, Spotlight, embedded Python 3.14. Bridge 0.2.1 unchanged. Blank
+document "Ohne Titel 1".
+
+1. Listener closed: `vw_ping` failed after 15.0 s with the Windows message
+   naming "MCP Listen".
+2. Listener open: `vw_ping` answered in 0.1 s. The dialog shows "Jobs run: N".
+3. `vw_document_info`, `vw_list_layers` and `vw_list_classes` returned correct
+   results.
+4. `vw_create_layer` was visible at once and `vw_revert_last` removed it. A
+   second layer was left in place, then Stop and Ctrl+Z in Vectorworks: Ctrl+Z
+   removed it. Writes made from the timer tick are regular undo steps.
+5. 50 consecutive `vw_ping` took 5.5 s with 0 failures. Vectorworks' Stop
+   button stayed responsive. Stop ended the session cleanly (the counter
+   showed the 62 jobs sent). Reopening MCP Listen worked and answered again.
+6. `vw_exec_python("1/0")` returned the ZeroDivisionError as a result and the
+   session continued.
+
+Setup frictions:
+
+- Pasting the two-line script into the Plug-in Manager editor (Extras >
+  Plug-ins > Plug-in-Manager > Neu > Befehl, Sprache Python) collapsed it into
+  one line with a space, which gave a SyntaxError on first run. The one-liner
+  `from vwmcp import vwmcp_bridge; vwmcp_bridge.listen()` works and is what
+  `MENU_SCRIPT_LISTEN` now says. A command made by hand appears under the
+  category Scripts in the workspace editor (Run Job is under Miscellaneous).
+- Standard Vectorworks workspaces are read-only. The workspace has to be
+  duplicated before the commands can be dragged into the Tools (Extras) menu.
+
+Handler hardening (commit e9b5cfd): an exception from the handler's own
+plumbing (claim, makedirs, result write, label update) is caught, counted and
+shown in the label as "Jobs run: N, errors: M (last: ...)". It is unit-tested
+with fault injection at `_claim_oldest`. A live fault-injection run is
+separate and not recorded here.
+
+Still open: `vw_screenshot`, `vw_list_documents`, `vw_switch_document` and
+`vw_open_document` are macOS-only (the ping result said "Switching documents
+is only available on macOS"). The `vw_doctor` tests expect `/bin/sh`. Windows
+users keep the modal dialog open for the whole session (explicit
+turn-taking). A non-modal trigger would need a native plug-in.
