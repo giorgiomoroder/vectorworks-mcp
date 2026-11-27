@@ -100,3 +100,22 @@ def test_deregisters_even_when_dialog_raises(root, fake_vs):
     except RuntimeError:
         pass
     assert vs.calls[-1] == ("Deregister", 7)
+
+
+def test_handler_survives_errors_outside_job_execution(root, fake_vs, monkeypatch):
+    real_claim = bridge._claim_oldest
+    calls = {"n": 0}
+
+    def flaky_claim(jobs_dir):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("folder locked")
+        return real_claim(jobs_dir)
+
+    monkeypatch.setattr(bridge, "_claim_oldest", flaky_claim)
+    write_job(root, "j1", "7")
+    vs = add_dialog(fake_vs, [bridge.SETUP_DIALOG, TIMER_TICK, TIMER_TICK, 1])
+    assert bridge.listen(root, vs_module=vs) == 1  # tick 1 raised, tick 2 ran the job
+    labels = [c for c in vs.calls if c[0] == "SetItemText"]
+    assert any("errors: 1" in c[3] and "OSError: folder locked" in c[3] for c in labels)
+    assert vs.calls[-1] == ("Deregister", 7)

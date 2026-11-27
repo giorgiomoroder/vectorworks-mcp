@@ -461,7 +461,7 @@ def listen(root=None, vs_module=None, interval_ms=TIMER_MS):
     number of jobs run."""
     if vs_module is None:
         import vs as vs_module  # only importable inside Vectorworks
-    state = {"ran": 0}
+    state = {"ran": 0, "errors": 0, "last_error": ""}
     dialog = vs_module.CreateLayout(LISTEN_TITLE, False, "Stop", "")
     vs_module.CreateStaticText(dialog, 4, "Claude can use Vectorworks while this window is open.", 60)
     vs_module.CreateStaticText(dialog, 5, "Jobs run: 0", 60)
@@ -471,12 +471,22 @@ def listen(root=None, vs_module=None, interval_ms=TIMER_MS):
     def handler(item, data):
         if item in (1, 2):  # Stop / Cancel ends the session
             return
-        if item == SETUP_DIALOG:
-            vs_module.RegisterDialogForTimerEvents(dialog, interval_ms)
-        n = run_pending(root, vs_module=vs_module, max_jobs=1)
-        if n:
-            state["ran"] += n
-            vs_module.SetItemText(dialog, 5, "Jobs run: %d" % state["ran"])
+        try:  # never let an error escape the callback: it would repeat on every tick
+            if item == SETUP_DIALOG:
+                vs_module.RegisterDialogForTimerEvents(dialog, interval_ms)
+            n = run_pending(root, vs_module=vs_module, max_jobs=1)
+            if n:
+                state["ran"] += n
+                vs_module.SetItemText(dialog, 5, "Jobs run: %d" % state["ran"])
+        except Exception as e:
+            state["errors"] += 1
+            state["last_error"] = "%s: %s" % (type(e).__name__, e)
+            try:
+                vs_module.SetItemText(
+                    dialog, 5, "Jobs run: %d, errors: %d (last: %s)"
+                    % (state["ran"], state["errors"], state["last_error"]))
+            except Exception:
+                pass  # SetItemText itself may be what failed
 
     try:
         vs_module.RunLayoutDialog(dialog, handler)
