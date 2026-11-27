@@ -141,12 +141,22 @@ def run_checks(data: dict) -> dict:
           "No GDTF fixture type: these export without geometry or channel layout. Pick a "
           "GDTF fixture in the Object Info palette (typing a name into the field does not link it).")
     if active("gdtf_unlinked"):
-        add("gdtf_unlinked",
-            [r for r in rows if str(r.get("GDTF Fixture Name", "")).strip()
-             and str(r.get("GDTF Fixture Type ID", "0")).strip() in ("", "0")],
-            "A GDTF name is typed in but no fixture type is linked (type id 0): the MVR gets no "
-            "geometry or channel layout. Choose the GDTF in the Object Info palette's GDTF chooser; "
-            "writing the field does not link it (live 2026-11-21).")
+        ids = {str(r.get("GDTF Fixture Type ID", "0")).strip() for r in rows}
+        if ids <= {"", "0"}:
+            # Live 2026-11-27 (VW 2027, German): the id stays 0 on every linked
+            # device; only a document that populates it can tell linked from typed.
+            issues.append({"check": "field_unused", "severity": WARNING,
+                           "message": "GDTF Fixture Type ID is 0 on every device (seen on "
+                                      "Vectorworks 2027): the unlinked check is skipped; a GDTF "
+                                      "fixture mode and channel count show the link instead.",
+                           "devices": []})
+        else:
+            add("gdtf_unlinked",
+                [r for r in rows if str(r.get("GDTF Fixture Name", "")).strip()
+                 and str(r.get("GDTF Fixture Type ID", "0")).strip() in ("", "0")],
+                "A GDTF name is typed in but no fixture type is linked (type id 0): the MVR gets no "
+                "geometry or channel layout. Choose the GDTF in the Object Info palette's GDTF chooser; "
+                "writing the field does not link it (live 2026-11-21).")
     if active("no_mode") and active("no_gdtf"):
         add("no_mode", [r for r in rows if str(r.get("GDTF Fixture Name", "")).strip()
                         and not str(r.get("Fixture Mode", "")).strip()],
