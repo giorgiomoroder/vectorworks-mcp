@@ -302,7 +302,8 @@ Vectorworks, and it runs Claude's requests while its window is open.
    `uvx --from git+https://github.com/giorgiomoroder/vectorworks-mcp vwmcp install-plugin --vw-version 2027`.
    This copies the bridge to `%APPDATA%\Nemetschek\Vectorworks\2027\Plug-ins\vwmcp\`
    and places `MCP Run Job.vsm` and `MCP Listen.vsm` next to it.
-2. Claude Desktop: `install-windows.ps1` writes its config. Claude Code:
+2. Claude Desktop: `install-windows.ps1` writes its config and sets
+   `VWMCP_VW_VERSION` from `-VwVersion`. Claude Code:
    `claude mcp add -s user vectorworks -e VWMCP_VW_VERSION=2027 -- uv run --directory <path-to-checkout> vwmcp`.
 3. Once only: standard Vectorworks workspaces are read-only. Duplicate one,
    then drag **MCP Run Job** (Miscellaneous) and **MCP Listen** (Scripts)
@@ -313,8 +314,11 @@ Vectorworks, and it runs Claude's requests while its window is open.
    **Ctrl+Z** works.
 
 If MCP Listen is closed, a request fails after about 15 seconds with a message
-naming it. If you create the command by hand in the Plug-in Manager instead
-of using the `.vsm`, the script must be the one line `from vwmcp import
+naming it. The copied `MCP Run Job.vsm` loaded on the tested machine. `MCP Listen.vsm` is
+the file Vectorworks wrote there when the command was created by hand. A copy
+of it on another machine is expected to work and to appear under Scripts, but
+is not confirmed. If it is missing, create the command in the Plug-in Manager
+yourself. The script must be the one line `from vwmcp import
 vwmcp_bridge; vwmcp_bridge.listen()`. Pasting two lines collapsed them into
 one in the editor and gave a SyntaxError.
 

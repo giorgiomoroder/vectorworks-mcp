@@ -23,7 +23,7 @@ if (Test-Path (Split-Path $cfg)) {
   if (Test-Path $cfg) { Copy-Item $cfg "$cfg.bak-vwmcp" }
   $json = if ((Test-Path $cfg) -and (Get-Content $cfg -Raw).Trim()) { Get-Content $cfg -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
   if (-not $json.mcpServers) { $json | Add-Member -NotePropertyName mcpServers -NotePropertyValue ([pscustomobject]@{}) }
-  $entry = [pscustomobject]@{ command = $uvx; args = @("--from", $Source, "vwmcp") }
+  $entry = [pscustomobject]@{ command = $uvx; args = @("--from", $Source, "vwmcp"); env = [pscustomobject]@{ VWMCP_VW_VERSION = $VwVersion } }
   $json.mcpServers | Add-Member -NotePropertyName vectorworks -NotePropertyValue $entry -Force
   $json | ConvertTo-Json -Depth 10 | Set-Content $cfg -Encoding UTF8
   Write-Host "Added 'vectorworks' to $cfg"

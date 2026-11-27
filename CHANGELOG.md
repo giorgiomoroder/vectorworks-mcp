@@ -11,6 +11,10 @@ Windows: MCP Listen
   dialog whose timer ticks run the queued jobs, so Windows needs no manual
   "MCP Run Job" per request. The dialog shows "Jobs run: N".
 - `install-plugin` places the bundled `MCP Listen.vsm` next to `MCP Run Job.vsm`.
+  The Run Job copy loaded on 2027; the Listen copy is expected to, not yet
+  confirmed on another machine.
+- `install-windows.ps1` sets `VWMCP_VW_VERSION` in the Claude Desktop entry
+  from `-VwVersion`.
 - Windows messages name "MCP Listen" when a request times out.
 - Handler hardening: an exception from the handler's own plumbing is caught,
   counted and shown in the label as "Jobs run: N, errors: M (last: ...)".

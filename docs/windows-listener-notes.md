@@ -116,6 +116,10 @@ Setup frictions:
   `from vwmcp import vwmcp_bridge; vwmcp_bridge.listen()` works and is what
   `MENU_SCRIPT_LISTEN` now says. A command made by hand appears under the
   category Scripts in the workspace editor (Run Job is under Miscellaneous).
+  The bundled `MCP Run Job.vsm` copied by `install-plugin` did load. The
+  bundled `MCP Listen.vsm` is the file Vectorworks wrote on this machine; a
+  copy of it on another machine is expected to load (the category travels
+  inside the file) but is not confirmed.
 - Standard Vectorworks workspaces are read-only. The workspace has to be
   duplicated before the commands can be dragged into the Tools (Extras) menu.
 
