@@ -25,6 +25,7 @@ import hashlib
 import itertools
 import json
 import os
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -89,6 +90,7 @@ class Bridge:
         self.trigger = trigger
         self.timeout = timeout
         self.claim_timeout = claim_timeout
+        self.platform = sys.platform
         self.poll_interval = poll_interval
         self.retrigger_after = RETRIGGER_AFTER
         self.alive_every = ALIVE_EVERY
@@ -266,10 +268,17 @@ class Bridge:
         return bool(probe()) if callable(probe) else False
 
     def _not_claimed_message(self) -> str:
+        front = "; vw_screenshot reports what is in front"
+        if self.platform == "win32":
+            front = ""
+            how = ("the 'MCP Listen' window is open in Vectorworks (the menu where you placed MCP Listen; "
+                   "it runs requests while open, click Stop to hand Vectorworks back)")
+        else:
+            how = "the 'MCP Run Job' menu command is in your workspace"
         return (f"Vectorworks did not pick up the job within {self.claim_timeout:g}s. Check that a "
-                "document is open, no dialog or menu is open (a right-click menu left open also "
-                "blocks it; vw_screenshot reports what is in front), and the 'MCP Run Job' menu "
-                "command is in your workspace. The request was cancelled and will not run later.")
+                "document is open, no other dialog or menu is open (a right-click menu left open "
+                "also blocks it" + front + "), and " + how + ". "
+                "The request was cancelled and will not run later.")
 
     def _cancel(self, job_path: Path) -> bool:
         """Rename an unclaimed job to .cancelled. True if it was still unclaimed

@@ -5,6 +5,27 @@ Dates are the day the batch was verified inside Vectorworks.
 
 ## Unreleased
 
+Windows: MCP Listen
+
+- New menu command **MCP Listen** (`vwmcp_bridge.listen()`). It opens a modal
+  dialog whose timer ticks run the queued jobs, so Windows needs no manual
+  "MCP Run Job" per request. The dialog shows "Jobs run: N".
+- `install-plugin` places the bundled `MCP Listen.vsm` next to `MCP Run Job.vsm`.
+  The Run Job copy loaded on 2027; the Listen copy is expected to, not yet
+  confirmed on another machine.
+- `install-windows.ps1` sets `VWMCP_VW_VERSION` in the Claude Desktop entry
+  from `-VwVersion`.
+- Windows messages name "MCP Listen" when a request times out.
+- Handler hardening: an exception from the handler's own plumbing is caught,
+  counted and shown in the label as "Jobs run: N, errors: M (last: ...)".
+  Unit-tested with fault injection; also live-tested: the handler caught the
+  fault, and the label keeps the error count.
+- Live-tested on Windows 11, Vectorworks 2027 (32.1.0, German), 2026-11-27:
+  ping 0.1 s with the listener open, 50 pings in 5.5 s without failures,
+  writes are regular undo steps (Ctrl+Z works). Still macOS-only:
+  `vw_screenshot` and the document tools. Details in
+  docs/windows-listener-notes.md.
+
 ## 0.2.1 (2026-11-25), beta
 
 Live-tested on Vectorworks 2027 (32.1.1) for the first time across the

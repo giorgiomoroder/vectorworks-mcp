@@ -74,3 +74,40 @@ def test_install_copies_the_type_and_safety_tables(tmp_path):
     assert (target / "vs_types.json").is_file() and (target / "vs_safety.json").is_file()
     assert json.loads((target / "vs_types.json").read_text())["f"]["Rect"]["t"] == "PP"
     assert "tables" in msg
+
+
+def test_install_on_windows_explains_mcp_listen(tmp_path, monkeypatch):
+    monkeypatch.setattr(install, "bundled_listen_command", lambda: None)
+    msg = install.install_plugin(tmp_path / "Plug-ins" / "vwmcp", platform="win32")
+    assert "MCP Listen" in msg
+    assert install.MENU_SCRIPT_LISTEN in msg
+
+
+def test_install_on_macos_does_not_mention_listen(tmp_path):
+    msg = install.install_plugin(tmp_path / "Plug-ins" / "vwmcp", platform="darwin")
+    assert "MCP Listen" not in msg
+
+
+def test_install_on_windows_places_the_bundled_listen_command_once(tmp_path):
+    target = tmp_path / "Plug-ins" / "vwmcp"
+    msg = install.install_plugin(target, platform="win32")
+    dest = tmp_path / "Plug-ins" / "MCP Listen.vsm"
+    assert dest.read_bytes() == install.bundled_listen_command().read_bytes()
+    assert "Installed the 'MCP Listen' menu command" in msg
+    assert "under Scripts" in msg
+    assert install.MENU_SCRIPT_LISTEN not in msg  # no need to type it when the file is there
+    msg2 = install.install_plugin(target, platform="win32")
+    assert "Listen command already present" in msg2
+
+
+def test_install_on_macos_does_not_place_the_listen_command(tmp_path):
+    target = tmp_path / "Plug-ins" / "vwmcp"
+    install.install_plugin(target, platform="darwin")
+    assert not (tmp_path / "Plug-ins" / "MCP Listen.vsm").exists()
+
+
+def test_install_on_windows_without_listen_file_prints_the_one_liner(tmp_path, monkeypatch):
+    monkeypatch.setattr(install, "bundled_listen_command", lambda: None)
+    msg = install.install_plugin(tmp_path / "Plug-ins" / "vwmcp", platform="win32")
+    assert install.MENU_SCRIPT_LISTEN in msg
+    assert "\n" not in install.MENU_SCRIPT_LISTEN.strip()

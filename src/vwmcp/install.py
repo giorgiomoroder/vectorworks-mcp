@@ -9,6 +9,22 @@ from pathlib import Path
 from vwmcp import app, config
 
 MENU_SCRIPT = "from vwmcp import vwmcp_bridge\nvwmcp_bridge.run_pending()\n"
+MENU_SCRIPT_LISTEN = "from vwmcp import vwmcp_bridge; vwmcp_bridge.listen()\n"
+LISTEN_STEP = (
+    "Windows has no automatic trigger: create a second menu command 'MCP Listen' once "
+    "(Tools > Plug-ins > Plug-in Manager > New > Command, Language: Python) with:\n\n"
+    + MENU_SCRIPT_LISTEN
+    + "\nAdd it to a menu like 'MCP Run Job'. While its window is open, Claude's requests run "
+    "on their own; click Stop to edit the drawing yourself."
+)
+LISTEN_INSTALLED_STEP = (
+    "Windows has no automatic trigger: add 'MCP Listen' (under Scripts) to a menu next to "
+    "'MCP Run Job' (Tools > Workspaces > Edit Current Workspace > Menus; standard workspaces "
+    "are read-only, duplicate yours first). While its window is open, Claude's requests run "
+    "on their own; click Stop to edit the drawing yourself. The window must be open before "
+    "a request is sent."
+)
+LISTEN_COMMAND_FILE = "MCP Listen.vsm"
 HOME_FILE = "vwmcp_home.txt"  # read by the bridge: which folder's jobs to run
 MENU_COMMAND_FILE = "MCP Run Job.vsm"
 MENU_STEP = (
@@ -23,6 +39,12 @@ def bundled_menu_command() -> Path | None:
     (src/vwmcp/menu/). Vectorworks can't make .vsm files from text, but a
     copy works in any user Plug-ins folder."""
     path = Path(__file__).resolve().parent / "menu" / MENU_COMMAND_FILE
+    return path if path.is_file() else None
+
+
+def bundled_listen_command() -> Path | None:
+    """The prebuilt 'MCP Listen' menu command (.vsm), Windows only."""
+    path = Path(__file__).resolve().parent / "menu" / LISTEN_COMMAND_FILE
     return path if path.is_file() else None
 
 
@@ -44,7 +66,11 @@ def plugin_dir(
 
 
 def install_plugin(
-    target: Path, home: Path | str | None = None, menu_command: Path | None = None
+    target: Path,
+    home: Path | str | None = None,
+    menu_command: Path | None = None,
+    listen_command: Path | None = None,
+    platform: str = sys.platform,
 ) -> str:
     """Copy the bridge into `target` and the 'MCP Run Job' command file next
     to it (into the Plug-ins folder) unless one is already there. `home` (the
@@ -79,4 +105,16 @@ def install_plugin(
             "(Tools > Plug-ins > Plug-in Manager > New > Command, Language: Python) with:\n\n"
             + MENU_SCRIPT
         )
-    return msg + "\n" + MENU_STEP + "\n"
+    msg += "\n" + MENU_STEP + "\n"
+    if platform == "win32":
+        lsm = listen_command if listen_command is not None else bundled_listen_command()
+        ldest = target.parent / LISTEN_COMMAND_FILE
+        if ldest.exists():
+            msg += f"Listen command already present: {ldest}\n"
+        elif lsm is not None:
+            ldest.write_bytes(Path(lsm).read_bytes())
+            msg += f"Installed the 'MCP Listen' menu command: {ldest}\n"
+        else:
+            return msg + "\n" + LISTEN_STEP + "\n"
+        msg += "\n" + LISTEN_INSTALLED_STEP + "\n"
+    return msg

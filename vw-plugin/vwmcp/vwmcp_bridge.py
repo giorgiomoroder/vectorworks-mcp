@@ -36,6 +36,9 @@ import traceback
 import types
 
 BRIDGE_VERSION = "0.2.1"
+SETUP_DIALOG = 12255   # layout-dialog "setup" event (vs.SetupDialogC is not exposed in 2027)
+TIMER_MS = 100         # file poll per tick; plenty for a tiny jobs folder
+LISTEN_TITLE = "MCP Listen"
 DEFAULT_ROOT = os.path.join(os.path.expanduser("~"), ".vwmcp")
 # Written by `vwmcp install-plugin --home`: lets each Vectorworks version run
 # its own server's jobs when several versions are installed side by side.
@@ -448,3 +451,51 @@ def run_pending(root=None, vs_module=None, max_jobs=1):
         with contextlib.suppress(FileNotFoundError):
             os.remove(claimed)
     return ran
+
+
+def listen(root=None, vs_module=None, interval_ms=TIMER_MS):
+    """Windows trigger (untested on macOS): a modal dialog whose timer
+    ticks run queued jobs until the user clicks Stop. The dialog callback runs
+    on Vectorworks' main thread, the only pure-Python context that can stay
+    alive and safely call vs.* (docs/windows-listener-notes.md). Returns the
+    number of jobs run."""
+    if vs_module is None:
+        import vs as vs_module  # only importable inside Vectorworks
+    state = {"ran": 0, "errors": 0, "last_error": ""}
+    dialog = vs_module.CreateLayout(LISTEN_TITLE, False, "Stop", "")
+    vs_module.CreateStaticText(dialog, 4, "Claude can use Vectorworks while this window is open.", 60)
+    vs_module.CreateStaticText(dialog, 5, "Jobs run: 0", 60)
+    vs_module.SetFirstLayoutItem(dialog, 4)
+    vs_module.SetBelowItem(dialog, 4, 5, 0, 0)
+
+    def _label():
+        if not state["errors"]:
+            return "Jobs run: %d" % state["ran"]
+        return "Jobs run: %d, errors: %d (last: %s)" % (
+            state["ran"], state["errors"], state["last_error"])
+
+    def handler(item, data):
+        if item in (1, 2):  # Stop / Cancel ends the session
+            return
+        try:  # never let an error escape the callback: it would repeat on every tick
+            if item == SETUP_DIALOG:
+                vs_module.RegisterDialogForTimerEvents(dialog, interval_ms)
+            n = run_pending(root, vs_module=vs_module, max_jobs=1)
+            if n:
+                state["ran"] += n
+                vs_module.SetItemText(dialog, 5, _label())
+        except Exception as e:
+            state["errors"] += 1
+            state["last_error"] = "%s: %s" % (type(e).__name__, e)
+            try:
+                vs_module.SetItemText(
+                    dialog, 5, "Jobs run: %d, errors: %d (last: %s)"
+                    % (state["ran"], state["errors"], state["last_error"]))
+            except Exception:
+                pass  # SetItemText itself may be what failed
+
+    try:
+        vs_module.RunLayoutDialog(dialog, handler)
+    finally:
+        vs_module.DeregisterDialogFromTimerEvents(dialog)
+    return state["ran"]
