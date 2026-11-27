@@ -23,12 +23,17 @@ Design (data-driven, keeps the macOS behaviour):
   `GDTF Fixture Type ID` is present but **no device row** has a value other
   than `""`/`"0"`, the check is skipped. One warning issue
   `{"check": "field_unused", "severity": "warning", "message": "GDTF Fixture
-  Type ID is 0 on every device (seen on Vectorworks 2027): the unlinked check
+  Type ID is 0 on every device (seen on a Vectorworks 2027 Windows plot): the unlinked check
   is skipped; a GDTF fixture mode and channel count show the link instead.",
   "devices": []}` is appended, like `field_missing`.
 - If at least one row has a non-zero id, the existing rule runs unchanged
   (the macOS plot where typed-in names kept id 0 while linked devices had an
   id).
+- `field_unused` is not counted in `summary`, and it is not raised on a
+  document without devices (the rule needs `rows and`).
+- The decision is made on the whole document: `vw_mvr_check` computes
+  `gdtf_id_populated` before the `position` filter, so filtering to one
+  position cannot turn the rule off or on.
 - The existing `no_mode` check still catches a GDTF name without a mode.
 
 Tests (`tests/test_mvr.py`): a document where every row has id `"0"` and a
@@ -49,14 +54,14 @@ non-empty position name, whether or not an object carries it:
 
 ```
 {"name": "K C", "has_object": false, "device_count": 38,
- "inst_types": {"Roxx Cluster B2 FC": 36, "MAC Ultra Perf": 2},
- "universes": [14, 15], "channels": [401, 438], "unpatched": 0}
+ "inst_types": {"Robe Robin Tetra2": 36, "Robe Robin Tetra1": 2},
+ "universes": [7, 8, 9, 10, 11, 12, 13, 14, 15, 16], "channels": [401, 438], "unpatched": 0}
 ```
 
 - `inst_types`: counts by `Inst Type`, most common first (dict insertion
   order).
 - `universes`: sorted distinct integers parsed from `UniverseAddress`
-  ("14/1" → 14); unparseable or "0/0" rows count as `unpatched`.
+  ("14/1" → 14); a row whose universe or address is below 1 (for example "0/0", "14/0", "0/5") or unparseable counts as `unpatched`.
 - `channels`: `[min, max]` over rows whose `Channel` parses as an integer,
   else `null`.
 - Sorted by `_natural(name)`. Existing keys (`positions`,
@@ -64,7 +69,7 @@ non-empty position name, whether or not an object carries it:
   per-device rows are unchanged.
 - The summary is a pure function `summarize_positions(rows, named)` in
   `vwlib.py` (Python 3.9, stdlib) so it is unit-testable with the
-  exec-with-fake-vs pattern of `tests/test_drawing.py`.
+  exec-with-fake-vs pattern of `tests/test_positions.py`.
 - `vw_list_positions` docstring is corrected to the real keys
   (`positions`, `by_name`, `unassigned_device_count`,
   `device_positions_without_object`).
@@ -80,7 +85,7 @@ Channel renumbering, Lightwright, position objects' geometry, grouping the
 
 ## Verification
 
-Unit: `uv run pytest tests/test_mvr.py tests/test_drawing.py -q`, lint on
+Unit: `uv run pytest tests/test_mvr.py tests/test_positions.py -q`, lint on
 `vwlib.py`. Live on the surveyed plot with MCP Listen open:
 `vw_mvr_check` summary has no `gdtf_unlinked`, one `field_unused` warning,
 `address_overlap: 2` still present; `vw_list_positions(include_devices=False)`

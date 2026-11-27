@@ -10,11 +10,10 @@
 
 ## Global Constraints
 
-- Branch `spotlight-plan-checks` (based on upstream `main`). Commit subjects in upstream style "Area: Sentence". Do not push (the controller pushes).
+- Branch `spotlight-plan-checks` (based on upstream `main`). Commit subjects in the form "Area: Sentence".
 - `src/vwmcp/vwlib.py`: Python 3.9 syntax (no `match`, no `X | Y`), stdlib only, lint clean. It is executed inside Vectorworks; keep helpers pure where possible.
 - `src/vwmcp/mvr.py` is server-side (Python 3.11+ allowed, but follow the file's existing style).
 - English for code, docs and messages. macOS behaviour unchanged: on a document where any device has a non-zero `GDTF Fixture Type ID`, the `gdtf_unlinked` rule runs exactly as before.
-- Known pre-existing failures on Windows (not in scope): 5 tests in `tests/test_doctor.py` and `tests/test_documents.py`.
 - Field names used (exact): `Position`, `Inst Type`, `Channel`, `UniverseAddress`, `GDTF Fixture Name`, `GDTF Fixture Type ID`.
 
 ---
@@ -154,7 +153,7 @@ def test_names_sort_naturally(fake_vs):
     assert [p["name"] for p in out] == ["K SL", "LX 2", "LX 10"]
 ```
 
-`fake_vs` is the fixture from `tests/conftest.py`. Loading `vwlib` via `exec` needs nothing from `vs` at import time (the existing `tests/test_drawing.py::test_dimension_strings_read_back_in_document_units` uses the same pattern); if the exec fails on a module-level `vs.` call, report it instead of stubbing more.
+`fake_vs` is the fixture from `tests/conftest.py`. Loading `vwlib` via `exec` needs nothing from `vs` at import time (the existing `tests/test_drawing.py::test_dimension_strings_read_back_in_document_units` uses the same pattern).
 
 - [ ] **Step 2: Run to verify they fail**
 
@@ -290,5 +289,11 @@ git commit -m "Positions: Summarise devices per position name, with or without a
 - [ ] **Step 3:** `uv run pytest -q` (expect only the 5 known failures); commit `Docs: Record the 2027 Windows plot findings`.
 
 ## Self-review notes
-- Spec §1 → Task 1; §2 (helper, `by_name`, docstring) → Task 2; verification/docs → Task 3 and the controller's live run.
+- Spec §1 → Task 1; §2 (helper, `by_name`, docstring) → Task 2; verification/docs → Task 3.
 - Names consistent: `summarize_positions(rows, named)`, `_universe_of`, `by_name`, `field_unused`.
+
+## Deviations during implementation
+- `inst_types` ties keep first-seen order: the dict is sorted by count only, with no name tie-break.
+- Per-device rows in `list_positions` are the `ld_row` output minus `UniverseAddress` and `Position`, which keeps `layer` and `class`, instead of a fixed key list.
+- `field_unused` is excluded from `summary`, guarded by `rows and` (no note on an empty document), and decided on the whole document (`gdtf_id_populated`, set in `vw_mvr_check` before the position filter) so the filter cannot change it.
+- `_universe_of` requires universe >= 1 and address >= 1, matching `mvr.parse_address`, so `14/0` and `0/5` count as unpatched too.

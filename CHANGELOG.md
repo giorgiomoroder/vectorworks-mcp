@@ -9,9 +9,10 @@ Dates are the day the batch was verified inside Vectorworks.
   device (seen on Vectorworks 2027, German, Windows) the `gdtf_unlinked`
   check is skipped with one `field_unused` warning instead of flagging every
   linked device; a non-zero id anywhere keeps the old rule. The note stays
-  out of `summary` and off empty documents. On the same plot the summary went
-  from `gdtf_unlinked: 247` to `{no_gdtf: 26, unpatched: 12, address_overlap: 2,
-  no_position: 2, position_without_object: 271}` plus the note.
+  out of `summary` and off empty documents. On the same plot the summary lost
+  `gdtf_unlinked: 247` and now reads `{no_gdtf: 26, unpatched: 12, address_overlap: 2,
+  no_position: 2, position_without_object: 271}` plus the note. The decision is made on the whole document, also when `position`
+  filters the check to one position.
 - `vw_list_positions`: new `by_name` list, one summary per Position name
   (device count, instrument types, universes, channel range, unpatched) whether
   or not a position object carries the name. Live on a 273-device plot whose
