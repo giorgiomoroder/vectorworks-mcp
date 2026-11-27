@@ -141,14 +141,18 @@ def run_checks(data: dict) -> dict:
           "No GDTF fixture type: these export without geometry or channel layout. Pick a "
           "GDTF fixture in the Object Info palette (typing a name into the field does not link it).")
     if active("gdtf_unlinked"):
-        ids = {str(r.get("GDTF Fixture Type ID", "0")).strip() for r in rows}
-        if rows and ids <= {"", "0"}:
+        populated = data.get("gdtf_id_populated")
+        if populated is None:
+            populated = any(str(r.get("GDTF Fixture Type ID", "0")).strip() not in ("", "0")
+                            for r in rows)
+        if rows and not populated:
             # Live 2026-11-27 (VW 2027, German): the id stays 0 on every linked
             # device; only a document that populates it can tell linked from typed.
             issues.append({"check": "field_unused", "severity": WARNING,
                            "message": "GDTF Fixture Type ID is 0 on every device (seen on "
-                                      "Vectorworks 2027): the unlinked check is skipped; a GDTF "
-                                      "fixture mode and channel count show the link instead.",
+                                      "a Vectorworks 2027 Windows plot): the unlinked check "
+                                      "is skipped; a GDTF fixture mode and channel count "
+                                      "show the link instead.",
                            "devices": []})
         else:
             add("gdtf_unlinked",

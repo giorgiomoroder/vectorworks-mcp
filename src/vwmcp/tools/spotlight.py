@@ -157,13 +157,13 @@ def vw_list_positions(
     Read-only; one job inside Vectorworks. Positions are Light Position Objects,
     Lighting Pipes, Pipe Ladders, Truss and Hanging Positions, matched to devices
     by the device's Position field (a text match, so a typo shows up here as a
-    position name without an object). Returns {positions: [{name, uuid, kind, layer,
-    device_count, devices?}],
-    by_name: [{name, has_object, device_count, inst_types (dict type -> count, most
-    common first), universes, channels,
-    unpatched}] (one per distinct Position name, also when no object carries it,
-    so a plot whose positions are only names still gets an overview),
-    unassigned_device_count, device_positions_without_object: {name: count}}.
+    position name without an object). Returns {positions: [{name, uuid, kind,
+    layer, device_count, devices?}], by_name: [{name, has_object, device_count,
+    inst_types (dict type -> count, most common first), universes, channels
+    ([min, max] or null), unpatched}] (one per distinct Position name, also when
+    no object carries it, so a plot whose positions are only names still gets an
+    overview), unassigned_device_count, device_positions_without_object:
+    {name: count}}.
     Use vw_list_truss for truss runs by system and vw_list_lighting_devices for
     the device rows themselves.
     """
@@ -225,13 +225,21 @@ def vw_mvr_check(
     device_count, summary: {check: count}, issues: [{check, severity:
     "error" | "warning", message, devices: [{uuid, position, unit, channel}]}],
     document, next_steps}; a "field_missing" issue lists the fields this
-    document lacks, whose checks were skipped. Fix findings with
+    document lacks, whose checks were skipped, and a "field_unused" issue names a
+    check skipped
+    because its field is never populated (GDTF Fixture Type ID is 0 on every
+    device). Fix findings with
     vw_set_lighting_device_fields (Fixture ID, UniverseAddress, Position,
     Fixture Mode), the Object Info palette (GDTF fixture) or by importing a
     hybrid symbol (vw_list_library, vw_import_resource), then check
     again.
     """
     data = vw("mvr_data")
+    all_rows = data["devices"]
+    if any("GDTF Fixture Type ID" in r for r in all_rows):
+        # decided on the whole document, so the position filter cannot change it
+        data["gdtf_id_populated"] = any(
+            str(r.get("GDTF Fixture Type ID", "0")).strip() not in ("", "0") for r in all_rows)
     if position is not None:
         data["devices"] = [r for r in data["devices"] if r.get("Position", "") == position]
     out = mvr.run_checks(data)

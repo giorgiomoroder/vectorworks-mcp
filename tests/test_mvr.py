@@ -209,3 +209,13 @@ def test_gdtf_type_id_never_populated_skips_the_unlinked_check():
     out2 = mvr.run_checks(data(rows))
     assert [d["uuid"] for d in issue(out2, "gdtf_unlinked")["devices"]] == ["b", "c"]
     assert "field_unused" not in checks(out2)
+
+
+def test_gdtf_id_populated_flag_overrides_the_row_subset():
+    rows = [{**device(uuid=u), "GDTF Fixture Type ID": "0"} for u in ("a", "b")]
+    out = mvr.run_checks(data(rows) | {"gdtf_id_populated": True})
+    assert [d["uuid"] for d in issue(out, "gdtf_unlinked")["devices"]] == ["a", "b"]
+    assert "field_unused" not in checks(out)
+    out = mvr.run_checks(data(rows) | {"gdtf_id_populated": False})
+    assert issue(out, "field_unused")["severity"] == "warning"
+    assert "gdtf_unlinked" not in checks(out)

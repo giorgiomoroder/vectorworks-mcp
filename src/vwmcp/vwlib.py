@@ -527,7 +527,7 @@ def mvr_data():
 
 
 def _universe_of(address):
-    """'14/1' -> 14; '', '0/0', malformed -> None (unpatched)."""
+    """'14/1' -> 14; '', '0/0', '14/0', '0/5', malformed -> None (unpatched)."""
     text = _str(address).strip()
     if "/" not in text:
         return None
@@ -536,7 +536,7 @@ def _universe_of(address):
         u, c = int(uni), int(chan)
     except ValueError:
         return None
-    return u if (u, c) != (0, 0) else None
+    return u if u >= 1 and c >= 1 else None
 
 
 def summarize_positions(rows, named):

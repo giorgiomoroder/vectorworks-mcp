@@ -43,3 +43,10 @@ def test_names_sort_naturally(fake_vs):
     m = load(fake_vs)
     out = m.summarize_positions([row("LX 10"), row("LX 2"), row("K SL")], named=set())
     assert [p["name"] for p in out] == ["K SL", "LX 2", "LX 10"]
+
+
+def test_partial_zero_addresses_count_as_unpatched(fake_vs):
+    m = load(fake_vs)
+    out = m.summarize_positions([row("L 1", address="14/0"), row("L 1", address="0/5")],
+                                named=set())
+    assert out[0]["unpatched"] == 2 and out[0]["universes"] == []
