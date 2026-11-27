@@ -157,8 +157,12 @@ def vw_list_positions(
     Read-only; one job inside Vectorworks. Positions are Light Position Objects,
     Lighting Pipes, Pipe Ladders, Truss and Hanging Positions, matched to devices
     by the device's Position field (a text match, so a typo shows up here as a
-    position name without an object). Returns {positions: [{name, type, uuid,
-    devices or count}], without_position: count, names_without_object: [...]}.
+    position name without an object). Returns {positions: [{name, uuid, kind, layer,
+    device_count, devices?}],
+    by_name: [{name, has_object, device_count, inst_types, universes, channels,
+    unpatched}] (one per distinct Position name, also when no object carries it,
+    so a plot whose positions are only names still gets an overview),
+    unassigned_device_count, device_positions_without_object: {name: count}}.
     Use vw_list_truss for truss runs by system and vw_list_lighting_devices for
     the device rows themselves.
     """
