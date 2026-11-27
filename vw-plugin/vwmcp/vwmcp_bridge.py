@@ -468,6 +468,12 @@ def listen(root=None, vs_module=None, interval_ms=TIMER_MS):
     vs_module.SetFirstLayoutItem(dialog, 4)
     vs_module.SetBelowItem(dialog, 4, 5, 0, 0)
 
+    def _label():
+        if not state["errors"]:
+            return "Jobs run: %d" % state["ran"]
+        return "Jobs run: %d, errors: %d (last: %s)" % (
+            state["ran"], state["errors"], state["last_error"])
+
     def handler(item, data):
         if item in (1, 2):  # Stop / Cancel ends the session
             return
@@ -477,7 +483,7 @@ def listen(root=None, vs_module=None, interval_ms=TIMER_MS):
             n = run_pending(root, vs_module=vs_module, max_jobs=1)
             if n:
                 state["ran"] += n
-                vs_module.SetItemText(dialog, 5, "Jobs run: %d" % state["ran"])
+                vs_module.SetItemText(dialog, 5, _label())
         except Exception as e:
             state["errors"] += 1
             state["last_error"] = "%s: %s" % (type(e).__name__, e)
