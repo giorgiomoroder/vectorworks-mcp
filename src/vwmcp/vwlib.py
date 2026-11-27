@@ -526,11 +526,60 @@ def mvr_data():
             "positions": positions, "symbols": symbols}
 
 
+def _universe_of(address):
+    """'14/1' -> 14; '', '0/0', '14/0', '0/5', malformed -> None (unpatched)."""
+    text = _str(address).strip()
+    if "/" not in text:
+        return None
+    uni, _, chan = text.partition("/")
+    try:
+        u, c = int(uni), int(chan)
+    except ValueError:
+        return None
+    return u if u >= 1 and c >= 1 else None
+
+
+def summarize_positions(rows, named):
+    """One summary per distinct non-empty Position name over device rows
+    (keys Position, Inst Type, Channel, UniverseAddress). `named` holds the
+    names that have a position object. Pure; also used by tests."""
+    groups = {}
+    for r in rows:
+        name = _str(r.get("Position", "")).strip()
+        if name:
+            groups.setdefault(name, []).append(r)
+    out = []
+    for name in sorted(groups, key=_natural):
+        devs = groups[name]
+        types = {}
+        for r in devs:
+            t = _str(r.get("Inst Type", ""))
+            types[t] = types.get(t, 0) + 1
+        inst_types = dict(sorted(types.items(), key=lambda kv: -kv[1]))
+        universes = sorted({u for u in (_universe_of(r.get("UniverseAddress", "")) for r in devs)
+                            if u is not None})
+        unpatched = sum(1 for r in devs if _universe_of(r.get("UniverseAddress", "")) is None)
+        chans = []
+        for r in devs:
+            try:
+                chans.append(int(_str(r.get("Channel", "")).strip()))
+            except ValueError:
+                pass
+        out.append({"name": name, "has_object": name in named, "device_count": len(devs),
+                    "inst_types": inst_types, "universes": universes,
+                    "channels": [min(chans), max(chans)] if chans else None,
+                    "unpatched": unpatched})
+    return out
+
+
 def list_positions(include_devices=True):
-    devices = {}
+    devices, rows = {}, []
     for h in lighting_devices():
-        devices.setdefault(_str(vs.GetRField(h, LD, "Position")), []).append(
-            ld_row(h, ["Unit Number", "Channel", "Inst Type", "Purpose"]))
+        r = ld_row(h, ["Unit Number", "Channel", "Inst Type", "Purpose", "UniverseAddress"])
+        r["Position"] = _str(vs.GetRField(h, LD, "Position"))
+        rows.append(r)
+        devices.setdefault(r["Position"], []).append(
+            {k: v for k, v in r.items() if k not in ("UniverseAddress", "Position")})
     positions, named = [], set()
     for h in all_objects("(T=86)"):
         plug = pio_name(h)
@@ -547,6 +596,7 @@ def list_positions(include_devices=True):
     positions.sort(key=lambda p: _natural(p["name"]))
     orphans = dict((k, len(v)) for k, v in devices.items() if k and k not in named)
     return {"positions": positions,
+            "by_name": summarize_positions(rows, named),
             "unassigned_device_count": len(devices.get("", [])),
             "device_positions_without_object": orphans}
 

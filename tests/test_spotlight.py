@@ -237,3 +237,21 @@ def test_lightwright_patch_falls_back_to_export_values_when_the_device_is_not_fo
     assert out["inverse_from"] == "export" and "stale" in out["note"]
     generic.vw_revert_last()
     assert "<Channel>101</Channel>" in xml.read_text()
+
+
+def test_mvr_check_position_filter_keeps_whole_document_id_decision(monkeypatch):
+    base = _mvr_rows()[0]
+    rows = [dict(base, uuid="a1", Position="A", **{"GDTF Fixture Type ID": "12", "Fixture ID": "1"}),
+            dict(base, uuid="b1", Position="B", UniverseAddress="2/1",
+                 **{"GDTF Fixture Type ID": "0", "Fixture ID": "2"}),
+            dict(base, uuid="b2", Position="B", UniverseAddress="2/20",
+                 **{"GDTF Fixture Type ID": "0", "Fixture ID": "3"})]
+    monkeypatch.setattr(spotlight, "vw", lambda fn, **kw: {
+        "document": "Plot.vwx", "devices": rows,
+        "fields": list(spotlight.mvr.FIELDS) + ["GDTF Fixture Type ID"],
+        "positions": ["A", "B"], "symbols": {"S": {"type": 2}}})
+    out = spotlight.vw_mvr_check(position="B")
+    assert out["device_count"] == 2
+    found = [i for i in out["issues"] if i["check"] == "gdtf_unlinked"]
+    assert [d["uuid"] for d in found[0]["devices"]] == ["b1", "b2"]
+    assert all(i["check"] != "field_unused" for i in out["issues"])

@@ -189,3 +189,33 @@ def test_gdtf_name_typed_but_not_linked_is_an_error():
     # without the type id field (older documents) the check is skipped, not fired
     out2 = mvr.run_checks(data([typed], fields=[f for f in ALL_FIELDS if f != "GDTF Fixture Type ID"]))
     assert "gdtf_unlinked" not in checks(out2)
+
+
+def test_gdtf_type_id_never_populated_skips_the_unlinked_check():
+    # Live 2026-11-27 (Vectorworks 2027 32.1.0, German, Windows): every linked
+    # device had 'GDTF Fixture Type ID' == "0" while carrying a real GDTF mode
+    # and channel count. With no non-zero id anywhere, the id says nothing.
+    rows = [{**device(uuid=u), "GDTF Fixture Type ID": "0"} for u in ("a", "b", "c")]
+    out = mvr.run_checks(data(rows))
+    assert "gdtf_unlinked" not in checks(out)
+    note = issue(out, "field_unused")
+    assert note["severity"] == "warning" and note["devices"] == []
+    assert "GDTF Fixture Type ID" in note["message"] and "skipped" in note["message"]
+    assert out["summary"].get("gdtf_unlinked", 0) == 0
+    assert "field_unused" not in out["summary"]
+    assert "field_unused" not in checks(mvr.run_checks(data([])))
+    # one non-zero id in the document: the macOS rule applies again
+    rows[0]["GDTF Fixture Type ID"] = "12"
+    out2 = mvr.run_checks(data(rows))
+    assert [d["uuid"] for d in issue(out2, "gdtf_unlinked")["devices"]] == ["b", "c"]
+    assert "field_unused" not in checks(out2)
+
+
+def test_gdtf_id_populated_flag_overrides_the_row_subset():
+    rows = [{**device(uuid=u), "GDTF Fixture Type ID": "0"} for u in ("a", "b")]
+    out = mvr.run_checks(data(rows) | {"gdtf_id_populated": True})
+    assert [d["uuid"] for d in issue(out, "gdtf_unlinked")["devices"]] == ["a", "b"]
+    assert "field_unused" not in checks(out)
+    out = mvr.run_checks(data(rows) | {"gdtf_id_populated": False})
+    assert issue(out, "field_unused")["severity"] == "warning"
+    assert "gdtf_unlinked" not in checks(out)

@@ -5,6 +5,20 @@ Dates are the day the batch was verified inside Vectorworks.
 
 ## Unreleased
 
+- `vw_mvr_check`: on a document where `GDTF Fixture Type ID` is 0 on every
+  device (seen on Vectorworks 2027, German, Windows) the `gdtf_unlinked`
+  check is skipped with one `field_unused` warning instead of flagging every
+  linked device; a non-zero id anywhere keeps the old rule. The note stays
+  out of `summary` and off empty documents. On the same plot the summary lost
+  `gdtf_unlinked: 247` and now reads `{no_gdtf: 26, unpatched: 12, address_overlap: 2,
+  no_position: 2, position_without_object: 271}` plus the note. The decision is made on the whole document, also when `position`
+  filters the check to one position.
+- `vw_list_positions`: new `by_name` list, one summary per Position name
+  (device count, instrument types, universes, channel range, unpatched) whether
+  or not a position object carries the name. Live on a 273-device plot whose
+  positions were names only: 15 entries, e.g. "K C" with 38 devices, universes
+  7-16, channels 401-438, `has_object: false`.
+
 ## 0.2.1 (2026-11-25), beta
 
 Live-tested on Vectorworks 2027 (32.1.1) for the first time across the
