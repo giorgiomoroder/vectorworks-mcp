@@ -37,6 +37,7 @@ def test_job_ids_sort_in_submission_order(root, fake_vs):
 
 def test_timeout_when_vectorworks_never_claims_job(root, fake_vs):
     b = make_bridge(root, lambda: None, claim_timeout=0.1)
+    b.platform = "darwin"  # the MCP Run Job wording is the macOS one; Windows says MCP Listen
     with pytest.raises(BridgeTimeout) as e:
         b.run("1")
     assert "MCP Run Job" in str(e.value)
@@ -200,3 +201,12 @@ def test_housekeep_removes_old_leftovers(root, fake_vs):
     fresh.write_text("{}")
     assert b.housekeep(now=time.time() + 7200) == 2  # both older than an hour at that time
     assert not old.exists() and not fresh.exists()
+
+
+def test_not_claimed_message_names_mcp_listen_on_windows(root, fake_vs):
+    b = make_bridge(root, lambda: None, claim_timeout=0.05)
+    b.platform = "win32"
+    assert "MCP Listen" in b._not_claimed_message()
+    b.platform = "darwin"
+    assert "MCP Listen" not in b._not_claimed_message()
+    assert "MCP Run Job" in b._not_claimed_message()

@@ -74,3 +74,16 @@ def test_install_copies_the_type_and_safety_tables(tmp_path):
     assert (target / "vs_types.json").is_file() and (target / "vs_safety.json").is_file()
     assert json.loads((target / "vs_types.json").read_text())["f"]["Rect"]["t"] == "PP"
     assert "tables" in msg
+
+
+def test_install_on_windows_explains_mcp_listen(tmp_path):
+    from vwmcp import install
+    msg = install.install_plugin(tmp_path / "Plug-ins" / "vwmcp", platform="win32")
+    assert "MCP Listen" in msg
+    assert install.MENU_SCRIPT_LISTEN in msg
+
+
+def test_install_on_macos_does_not_mention_listen(tmp_path):
+    from vwmcp import install
+    msg = install.install_plugin(tmp_path / "Plug-ins" / "vwmcp", platform="darwin")
+    assert "MCP Listen" not in msg
