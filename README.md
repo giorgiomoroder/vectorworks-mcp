@@ -316,7 +316,8 @@ Vectorworks, and it runs Claude's requests while its window is open.
 4. Each session: open **MCP Listen** before asking Claude. The window shows
    "Jobs run: N". Press **Stop** when you want to edit yourself, then open it
    again for the next request. In the test, one layer created from a tick
-   was undone with **Ctrl+Z** after Stop.
+   was undone with **Ctrl+Z** after Stop. After `install-plugin` updates the
+   bridge, restart Vectorworks; reopening MCP Listen is not enough.
 
 If MCP Listen is closed, a request fails after about 15 seconds with a message
 naming it. The copied `MCP Run Job.vsm` loaded on the tested machine. `MCP Listen.vsm` is

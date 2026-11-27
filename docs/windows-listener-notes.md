@@ -108,6 +108,23 @@ document "Ohne Titel 1".
    showed the 62 jobs sent). Reopening MCP Listen worked and answered again.
 6. `vw_exec_python("1/0")` returned the ZeroDivisionError as a result and the
    session continued.
+7. Vectorworks keeps the imported `vwmcp_bridge` module in memory for the whole
+   session. After `vwmcp install-plugin` overwrote the bridge file, reopening
+   MCP Listen still ran the old code; only a Vectorworks restart loaded the
+   new file. (CLAUDE.md and the CHANGELOG already say to restart Vectorworks
+   once after a bridge update; this confirms it for the Windows listener.)
+8. Exceptions that escape a timer-dialog callback do not kill the dialog.
+   Vectorworks appends each traceback to
+   `%APPDATA%\Nemetschek\Vectorworks\2027\ErrorOut.txt` and shows them in a
+   "Script-Fehler" (Script Errors) dialog when the listener dialog closes. If
+   the dialog shows "Script-Fehler", look in `ErrorOut.txt`. With the
+   unhardened handler, a job file held open by another process made
+   `os.replace` in `_claim_oldest` raise `PermissionError [WinError 32]` on
+   every tick (about 30 tracebacks in 3 s); the job ran as soon as the file
+   was released. With the hardened handler (after the restart), the same fault
+   produced no `ErrorOut.txt` growth and the job ran after release: the
+   handler caught it. The label then lost the error count, which the
+   previous commit fixes.
 
 Setup frictions:
 
@@ -127,8 +144,7 @@ Setup frictions:
 Handler hardening (commit e9b5cfd): an exception from the handler's own
 plumbing (claim, makedirs, result write, label update) is caught, counted and
 shown in the label as "Jobs run: N, errors: M (last: ...)". It is unit-tested
-with fault injection at `_claim_oldest`. A live fault-injection run is
-separate and not recorded here.
+with fault injection at `_claim_oldest`. See findings 7 and 8 for the live run.
 
 Still open: `vw_screenshot`, `vw_list_documents`, `vw_switch_document` and
 `vw_open_document` are macOS-only (the ping result said "Switching documents

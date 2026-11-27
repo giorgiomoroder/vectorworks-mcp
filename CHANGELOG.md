@@ -18,7 +18,8 @@ Windows: MCP Listen
 - Windows messages name "MCP Listen" when a request times out.
 - Handler hardening: an exception from the handler's own plumbing is caught,
   counted and shown in the label as "Jobs run: N, errors: M (last: ...)".
-  Unit-tested with fault injection; no live fault-injection result yet.
+  Unit-tested with fault injection; also live-tested: the handler caught the
+  fault, and the label keeps the error count.
 - Live-tested on Windows 11, Vectorworks 2027 (32.1.0, German), 2026-11-27:
   ping 0.1 s with the listener open, 50 pings in 5.5 s without failures,
   writes are regular undo steps (Ctrl+Z works). Still macOS-only:
