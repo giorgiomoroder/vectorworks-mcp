@@ -913,3 +913,14 @@ reverted; both censuses ended at their baselines.
   same plot: 214 no_gdtf, 2 gdtf_unlinked, 106 unpatched, 34 address_shared,
   6 address_overlap, 44 no_position, 81 position_without_object, 8
   symbol_without_3d (same numbers as 2026 apart from Fixture ID).
+
+## Live findings 2026-11-27 (Windows, 2027 German)
+
+- Vectorworks 2027 32.1.0, German, Windows 11: `GDTF Fixture Type ID` and
+  `GDTF Fixture Custom ID` are "0" on all 247 GDTF devices while `GDTF Fixture
+  Mode` (e.g. "Mode 1 - Standard 16 bit.Robin Forte") and `Num Channels` (54)
+  are set. `vw_mvr_check` therefore skips `gdtf_unlinked` for such a document.
+- The document has no `Fixture ID` field, only `FixtureID`, which holds the
+  fixture type name (as on the BL plot).
+- `ForEachObject` with criteria and a direct `FLayer/FInLayer/NextObj` walk
+  both return the same 273 devices, including ones on invisible layers.
