@@ -1,4 +1,8 @@
-# vectorworks-mcp installer for Windows (live-tested on Vectorworks 2027, German).
+# vectorworks-mcp installer for Windows. UNTESTED: this script, the uvx route and the Claude
+# Desktop config were not run live. The MCP Listen trigger itself was live-tested on Vectorworks
+# 2027 (German) with a checkout install (uv run vwmcp install-plugin --vw-version 2027) and
+# Claude Code registered via:
+#   claude mcp add -s user vectorworks -e VWMCP_VW_VERSION=2027 -- uv run --directory <checkout> vwmcp
 #   powershell -ExecutionPolicy Bypass -File install-windows.ps1
 #   powershell -ExecutionPolicy Bypass -File install-windows.ps1 -VwVersion 2027
 # On Windows there is no automatic trigger: open the MCP Listen command in
@@ -30,7 +34,7 @@ if (Test-Path (Split-Path $cfg)) {
 }
 
 Write-Host "`nInstalled 'MCP Run Job' and 'MCP Listen' (.vsm) next to the bridge."
-Write-Host "Add both to a menu once. Standard workspaces are read-only: duplicate one first."
+Write-Host "Add MCP Listen to a menu once (MCP Run Job is an optional manual fallback). Standard workspaces are read-only: duplicate one first."
 Write-Host "Before asking Claude, open MCP Listen in Vectorworks; press Stop to edit yourself."
 Write-Host "Claude Code users register the server with (not run by this script):"
 Write-Host "  claude mcp add -s user vectorworks -e VWMCP_VW_VERSION=$VwVersion -- uv run --directory <path-to-checkout> vwmcp"

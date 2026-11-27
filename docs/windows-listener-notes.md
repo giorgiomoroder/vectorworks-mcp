@@ -84,7 +84,7 @@ sockets, no new wire format, and the existing bridge file stays the executor.
 - Resolved: `vs.SetupDialogC` is not exposed in the 2027 Python API table, so
   the constant 12255 is used.
 
-First live test (macOS, throwaway doc, user watching): open the dialog, send
+Historical, superseded by Live findings 2026-11-27: first live test (macOS, throwaway doc, user watching): open the dialog, send
 `vw_ping` with the trigger disabled, confirm the result lands; then one
 `vw_set_record` and Cmd-Z.
 
@@ -101,7 +101,8 @@ document "Ohne Titel 1".
    results.
 4. `vw_create_layer` was visible at once and `vw_revert_last` removed it. A
    second layer was left in place, then Stop and Ctrl+Z in Vectorworks: Ctrl+Z
-   removed it. Writes made from the timer tick are regular undo steps.
+   removed it. Observation: one layer created from a tick was undone with
+   Ctrl+Z after Stop.
 5. 50 consecutive `vw_ping` took 5.5 s with 0 failures. Vectorworks' Stop
    button stayed responsive. Stop ended the session cleanly (the counter
    showed the 62 jobs sent). Reopening MCP Listen worked and answered again.
@@ -131,6 +132,6 @@ separate and not recorded here.
 
 Still open: `vw_screenshot`, `vw_list_documents`, `vw_switch_document` and
 `vw_open_document` are macOS-only (the ping result said "Switching documents
-is only available on macOS"). The `vw_doctor` tests expect `/bin/sh`. Windows
+is only available on macOS"). Windows
 users keep the modal dialog open for the whole session (explicit
 turn-taking). A non-modal trigger would need a native plug-in.

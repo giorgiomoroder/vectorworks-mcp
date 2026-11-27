@@ -77,7 +77,6 @@ def test_install_copies_the_type_and_safety_tables(tmp_path):
 
 
 def test_install_on_windows_explains_mcp_listen(tmp_path, monkeypatch):
-    from vwmcp import install
     monkeypatch.setattr(install, "bundled_listen_command", lambda: None)
     msg = install.install_plugin(tmp_path / "Plug-ins" / "vwmcp", platform="win32")
     assert "MCP Listen" in msg
@@ -85,7 +84,6 @@ def test_install_on_windows_explains_mcp_listen(tmp_path, monkeypatch):
 
 
 def test_install_on_macos_does_not_mention_listen(tmp_path):
-    from vwmcp import install
     msg = install.install_plugin(tmp_path / "Plug-ins" / "vwmcp", platform="darwin")
     assert "MCP Listen" not in msg
 

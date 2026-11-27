@@ -111,11 +111,10 @@ def install_plugin(
         ldest = target.parent / LISTEN_COMMAND_FILE
         if ldest.exists():
             msg += f"Listen command already present: {ldest}\n"
-            msg += "\n" + LISTEN_INSTALLED_STEP + "\n"
         elif lsm is not None:
             ldest.write_bytes(Path(lsm).read_bytes())
             msg += f"Installed the 'MCP Listen' menu command: {ldest}\n"
-            msg += "\n" + LISTEN_INSTALLED_STEP + "\n"
         else:
-            msg += "\n" + LISTEN_STEP + "\n"
+            return msg + "\n" + LISTEN_STEP + "\n"
+        msg += "\n" + LISTEN_INSTALLED_STEP + "\n"
     return msg

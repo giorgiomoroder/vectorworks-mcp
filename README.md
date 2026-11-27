@@ -290,8 +290,12 @@ server with each request. Details and the reasons for this design are in
 
 ## Windows
 
-Live-tested on Windows 11 with Vectorworks 2027 (32.1.0, German UI). Other
-Windows setups are untested.
+The MCP Listen trigger was live-tested on Windows 11 with Vectorworks 2027
+(32.1.0, German UI). That test installed from a checkout
+(`uv run vwmcp install-plugin --vw-version 2027`) and registered Claude Code with
+`claude mcp add -s user vectorworks -e VWMCP_VW_VERSION=2027 -- uv run --directory <path-to-checkout> vwmcp`.
+The `install-windows.ps1` / `uvx` route and the Claude Desktop config (including
+its `env` block) are untested, as are other Windows setups.
 
 Windows has no automatic trigger. Instead you open **MCP Listen** in
 Vectorworks, and it runs Claude's requests while its window is open.
@@ -306,12 +310,13 @@ Vectorworks, and it runs Claude's requests while its window is open.
    `VWMCP_VW_VERSION` from `-VwVersion`. Claude Code:
    `claude mcp add -s user vectorworks -e VWMCP_VW_VERSION=2027 -- uv run --directory <path-to-checkout> vwmcp`.
 3. Once only: standard Vectorworks workspaces are read-only. Duplicate one,
-   then drag **MCP Run Job** (Miscellaneous) and **MCP Listen** (Scripts)
-   into a menu such as Tools.
+   then drag **MCP Listen** (expected under Scripts) into a menu such as Tools
+   (Extras in the German UI). **MCP Listen** is sufficient on Windows; **MCP Run
+   Job** (Miscellaneous) is an optional manual fallback you can add the same way.
 4. Each session: open **MCP Listen** before asking Claude. The window shows
    "Jobs run: N". Press **Stop** when you want to edit yourself, then open it
-   again for the next request. Claude's edits are regular undo steps, so
-   **Ctrl+Z** works.
+   again for the next request. In the test, one layer created from a tick
+   was undone with **Ctrl+Z** after Stop.
 
 If MCP Listen is closed, a request fails after about 15 seconds with a message
 naming it. The copied `MCP Run Job.vsm` loaded on the tested machine. `MCP Listen.vsm` is
@@ -323,7 +328,7 @@ vwmcp_bridge; vwmcp_bridge.listen()`. Pasting two lines collapsed them into
 one in the editor and gave a SyntaxError.
 
 macOS only for now: `vw_screenshot`, `vw_list_documents`, `vw_switch_document`
-and `vw_open_document`. The `vw_doctor` tests expect `/bin/sh`. A trigger that
+and `vw_open_document`. A trigger that
 needs no open window would require a native plug-in.
 
 ## Development

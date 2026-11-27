@@ -47,9 +47,11 @@ def test_timer_ticks_run_queued_jobs_until_stop(root, fake_vs):
 
 
 def test_job_arriving_mid_session_is_picked_up(root, fake_vs):
-    def drop_job_on_second_tick(item, seen=[]):
-        seen.append(item)
-        if len(seen) == 3:
+    calls = {"n": 0}
+
+    def drop_job_on_second_tick(item):
+        calls["n"] += 1
+        if calls["n"] == 3:
             write_job(root, "late", "'late'")
 
     vs = add_dialog(fake_vs, [bridge.SETUP_DIALOG, TIMER_TICK, TIMER_TICK, TIMER_TICK, 2],
@@ -58,12 +60,13 @@ def test_job_arriving_mid_session_is_picked_up(root, fake_vs):
     assert json.loads((root / "results" / "late.json").read_text())["value"] == "late"
 
 
-def test_stop_and_cancel_run_no_jobs(root, fake_vs):
+def test_setup_may_drain_once_but_stop_and_cancel_run_nothing(root, fake_vs):
     write_job(root, "j1", "1")
     vs = add_dialog(fake_vs, [bridge.SETUP_DIALOG, 1])
-    # setup itself may drain once; a click on Stop must not run anything further
+    # the setup event drains j1 once; the click on Stop runs nothing further
     ran = bridge.listen(root, vs_module=vs)
-    assert ran <= 1
+    assert ran == 1
+    assert (root / "results" / "j1.json").exists()
     vs2 = add_dialog(fake_vs, [2])
     write_job(root, "j2", "2")
     assert bridge.listen(root, vs_module=vs2) == 0

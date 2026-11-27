@@ -454,7 +454,7 @@ def run_pending(root=None, vs_module=None, max_jobs=1):
 
 
 def listen(root=None, vs_module=None, interval_ms=TIMER_MS):
-    """Windows trigger (also usable on macOS): a modal dialog whose timer
+    """Windows trigger (untested on macOS): a modal dialog whose timer
     ticks run queued jobs until the user clicks Stop. The dialog callback runs
     on Vectorworks' main thread, the only pure-Python context that can stay
     alive and safely call vs.* (docs/windows-listener-notes.md). Returns the

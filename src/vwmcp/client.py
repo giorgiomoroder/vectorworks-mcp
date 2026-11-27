@@ -268,14 +268,16 @@ class Bridge:
         return bool(probe()) if callable(probe) else False
 
     def _not_claimed_message(self) -> str:
+        front = "; vw_screenshot reports what is in front"
         if self.platform == "win32":
-            how = ("the 'MCP Listen' window is open in Vectorworks (Tools > MCP Listen; "
+            front = ""
+            how = ("the 'MCP Listen' window is open in Vectorworks (the menu where you placed MCP Listen; "
                    "it runs requests while open, click Stop to hand Vectorworks back)")
         else:
             how = "the 'MCP Run Job' menu command is in your workspace"
         return (f"Vectorworks did not pick up the job within {self.claim_timeout:g}s. Check that a "
                 "document is open, no other dialog or menu is open (a right-click menu left open "
-                "also blocks it; vw_screenshot reports what is in front), and " + how + ". "
+                "also blocks it" + front + "), and " + how + ". "
                 "The request was cancelled and will not run later.")
 
     def _cancel(self, job_path: Path) -> bool:
